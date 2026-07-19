@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Usage: ./scripts/build-fixtures
+# Description: Packs the deterministic npm fixtures and creates their integrity catalog.
+# Returns: 0 on success; non-zero when npm, Node.js, or catalog generation fails.
+
+readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly PROJECT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+readonly FIXTURE_DIR="${PROJECT_DIR}/fixtures"
+
+mkdir -p "${FIXTURE_DIR}"
+
+npm pack "${PROJECT_DIR}/packages/good" \
+  --ignore-scripts \
+  --pack-destination "${FIXTURE_DIR}" \
+  --json >/dev/null
+
+npm pack "${PROJECT_DIR}/packages/canary" \
+  --ignore-scripts \
+  --pack-destination "${FIXTURE_DIR}" \
+  --json >/dev/null
+
+node "${SCRIPT_DIR}/generate-catalog.mjs" "${FIXTURE_DIR}"
+
+echo "Built fixture catalog at ${FIXTURE_DIR}/catalog.json"

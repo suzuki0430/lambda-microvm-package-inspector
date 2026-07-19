@@ -1,0 +1,11 @@
+apiVersion: inspection.demo.aws/v1alpha1
+kind: PackageInspection
+metadata:
+  name: canary-package
+  namespace: package-inspector-system
+spec:
+  ecosystem: npm
+  package:
+    name: "@demo/canary"
+    version: "1.0.0"
+  timeoutSeconds: 30

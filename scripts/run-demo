@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+readonly REPOSITORY_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+readonly NAMESPACE="package-inspector-system"
+
+for inspection in good-package canary-package; do
+  if kubectl -n "${NAMESPACE}" get "packageinspection/${inspection}" >/dev/null 2>&1; then
+    echo "Refusing to reuse existing PackageInspection ${inspection}; delete it and confirm cleanup first." >&2
+    exit 2
+  fi
+done
+
+kubectl apply -f "${REPOSITORY_ROOT}/deploy/examples/good.yaml"
+kubectl apply -f "${REPOSITORY_ROOT}/deploy/examples/canary.yaml"
+
+# Usage: wait_for_inspection <name>
+# Description: Waits for one terminal phase and fails immediately on Failed.
+# Returns: 0 for Succeeded; 1 for Failed or timeout.
+wait_for_inspection() {
+  local inspection="${1:?inspection name required}"
+  local deadline
+  local phase
+  deadline="$(( $(date +%s) + 600 ))"
+
+  while (( $(date +%s) < deadline )); do
+    phase="$(kubectl -n "${NAMESPACE}" get "packageinspection/${inspection}" -o jsonpath='{.status.phase}')"
+    case "${phase}" in
+      Succeeded)
+        return 0
+        ;;
+      Failed)
+        kubectl -n "${NAMESPACE}" get "packageinspection/${inspection}" -o yaml >&2
+        return 1
+        ;;
+    esac
+    sleep 2
+  done
+  echo "Timed out waiting for PackageInspection ${inspection}." >&2
+  return 1
+}
+
+for inspection in good-package canary-package; do
+  wait_for_inspection "${inspection}"
+done
+
+kubectl -n "${NAMESPACE}" get packageinspections \
+  -o custom-columns='NAME:.metadata.name,PACKAGE:.spec.package.name,PHASE:.status.phase,RISK:.status.risk.level,SCORE:.status.risk.score,REPORT:.status.report.markdownURI'

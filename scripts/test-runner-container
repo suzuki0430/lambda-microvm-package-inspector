@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Usage: ./scripts/test-runner-container
+# Description: Builds the real Linux runner and verifies canary strace evidence.
+# Returns: 0 when the bounded HTTP/inspection path succeeds.
+
+readonly REPOSITORY_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+readonly CONTAINER_NAME="package-inspector-runner-integration-$$"
+readonly CONTAINER_PLATFORM="${INSPECTOR_PLATFORM:-linux/arm64}"
+TEMPORARY_DIRECTORY="$(mktemp -d)"
+readonly TEMPORARY_DIRECTORY
+
+cleanup() {
+  docker stop "${CONTAINER_NAME}" >/dev/null 2>&1 || true
+  rm -rf -- "${TEMPORARY_DIRECTORY}"
+}
+trap cleanup EXIT
+
+"${REPOSITORY_ROOT}/scripts/prepare-microvm-artifact"
+docker build \
+  --platform "${CONTAINER_PLATFORM}" \
+  --tag package-inspector-runner:integration \
+  "${REPOSITORY_ROOT}/build/microvm-artifact"
+docker run -d --rm \
+  --name "${CONTAINER_NAME}" \
+  --publish 127.0.0.1:18080:8080 \
+  package-inspector-runner:integration >/dev/null
+
+for _ in {1..20}; do
+  if curl --fail --silent http://127.0.0.1:18080/healthz >/dev/null; then
+    break
+  fi
+  sleep 1
+done
+
+curl --fail --silent --show-error \
+  --request POST \
+  --header 'content-type: application/json' \
+  --data '{"scanId":"integration-canary","ecosystem":"npm","package":{"name":"@demo/canary","version":"1.0.0"},"timeoutSeconds":30}' \
+  http://127.0.0.1:18080/v1/scans >/dev/null
+
+for _ in {1..30}; do
+  scan_state="$(curl --fail --silent http://127.0.0.1:18080/v1/scans/integration-canary | jq -r .state)"
+  if [[ "${scan_state}" == "completed" ]]; then
+    break
+  fi
+  if [[ "${scan_state}" == "failed" ]]; then
+    echo "container inspection failed" >&2
+    exit 1
+  fi
+  sleep 1
+done
+
+readonly REPORT_PATH="${TEMPORARY_DIRECTORY}/report.json"
+curl --fail --silent --show-error \
+  http://127.0.0.1:18080/v1/scans/integration-canary/report \
+  --output "${REPORT_PATH}"
+
+jq -e '
+  .execution.outcome == "succeeded" and
+  .limits.cpuSeconds == 60 and
+  .dynamicAnalysis.resources.traceAvailable == true and
+  .staticAnalysis.lifecycleScripts.postinstall == "node postinstall.js" and
+  any(.dynamicAnalysis.filesystem[]; .path == "/tmp/demo-canary.txt") and
+  (.dynamicAnalysis.processes | length) > 0 and
+  (.dynamicAnalysis.dns | length) > 0 and
+  (.dynamicAnalysis.network | length) > 0
+' "${REPORT_PATH}" >/dev/null
+
+echo "Linux container integration succeeded with strace evidence."

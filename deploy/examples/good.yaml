@@ -1,0 +1,11 @@
+apiVersion: inspection.demo.aws/v1alpha1
+kind: PackageInspection
+metadata:
+  name: good-package
+  namespace: package-inspector-system
+spec:
+  ecosystem: npm
+  package:
+    name: "@demo/good"
+    version: "1.0.0"
+  timeoutSeconds: 30

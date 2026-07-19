@@ -1,0 +1,19 @@
+{
+  "name": "@demo/canary",
+  "version": "1.0.0",
+  "description": "A harmless lifecycle canary for the Lambda MicroVM package inspection demo.",
+  "license": "MIT",
+  "type": "module",
+  "main": "index.js",
+  "files": [
+    "index.js",
+    "postinstall.js",
+    "README.md"
+  ],
+  "scripts": {
+    "postinstall": "node postinstall.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

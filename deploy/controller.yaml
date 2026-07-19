@@ -1,0 +1,117 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: package-inspection-controller
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: package-inspection-controller
+subjects:
+  - kind: ServiceAccount
+    name: package-inspection-controller
+    namespace: package-inspector-system
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: package-inspection-controller
+  namespace: package-inspector-system
+  labels:
+    app.kubernetes.io/name: package-inspection-controller
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: package-inspection-controller
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: package-inspection-controller
+    spec:
+      serviceAccountName: package-inspection-controller
+      automountServiceAccountToken: true
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: controller
+          image: controller.invalid/package-inspection-controller:unconfigured
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: AWS_REGION
+              value: unconfigured
+            - name: INSPECTOR_IMAGE_IDENTIFIER
+              value: unconfigured
+            - name: INSPECTOR_IMAGE_VERSION
+              value: unconfigured
+            - name: INSPECTOR_EGRESS_CONNECTOR_ARN
+              value: unconfigured
+            - name: REPORT_BUCKET
+              value: unconfigured
+            - name: REPORT_PREFIX
+              value: reports
+            - name: REPORT_SCHEMA_PATH
+              value: /etc/package-inspector/report.schema.json
+            - name: WATCH_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          ports:
+            - name: health
+              containerPort: 8081
+            - name: metrics
+              containerPort: 8082
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: health
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: health
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+          volumeMounts:
+            - name: report-schema
+              mountPath: /etc/package-inspector
+              readOnly: true
+      volumes:
+        - name: report-schema
+          configMap:
+            name: package-inspection-report-schema
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: package-inspection-controller
+  namespace: package-inspector-system
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: package-inspection-controller
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: package-inspection-demo-counts
+  namespace: package-inspector-system
+spec:
+  hard:
+    count/packageinspections.inspection.demo.aws: "10"
+    count/microvms.lambdamicrovms.services.k8s.aws: "2"

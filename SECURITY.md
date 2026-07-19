@@ -1,0 +1,7 @@
+# Security policy
+
+このrepositoryは研究・記事用の限定デモです。実在する悪意あるpackageや、所有者の許可がないpackageを投入しないでください。CRDのallowlistを外してInternetへ公開しないでください。
+
+脆弱性を報告するときはpublic issueへcredential、JWE、AWS account ID、private endpoint、raw malicious sampleを貼らないでください。repository ownerへprivate channelで、再現に必要な最小情報だけを共有してください。
+
+AWS resourceを残した疑いがある場合は、まず`aws lambda-microvms list-microvms`で確認して該当VMをterminateし、その後にKubernetes finalizerやCloudFormation stackを修復してください。

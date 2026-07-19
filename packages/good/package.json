@@ -1,0 +1,15 @@
+{
+  "name": "@demo/good",
+  "version": "1.0.0",
+  "description": "A deterministic benign fixture for the Lambda MicroVM package inspection demo.",
+  "license": "MIT",
+  "type": "module",
+  "main": "index.js",
+  "files": [
+    "index.js",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  }
+}
