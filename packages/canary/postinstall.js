@@ -36,7 +36,8 @@ async function contactSink() {
       hostname: SINK_HOST,
       error: error instanceof Error ? error.code ?? error.name : 'unknown',
     });
-    return;
+    // Continue into http.request so DNS denial is also captured as a bounded
+    // HTTP failure instead of silently skipping the connection attempt.
   }
 
   await new Promise((resolve) => {
