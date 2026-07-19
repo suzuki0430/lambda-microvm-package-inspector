@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+readonly REPOSITORY_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+readonly OUTPUT_DIRECTORY="${REPOSITORY_ROOT}/build/microvm-artifact"
+readonly BUILD_DIRECTORY="${REPOSITORY_ROOT}/build"
+
+mkdir -p "${BUILD_DIRECTORY}"
+STAGING_DIRECTORY="$(mktemp -d "${BUILD_DIRECTORY}/microvm-artifact.XXXXXX")"
+readonly STAGING_DIRECTORY
+trap 'rm -rf -- "${STAGING_DIRECTORY}"' EXIT
+
+"${REPOSITORY_ROOT}/scripts/build-fixtures"
+mkdir -p "${STAGING_DIRECTORY}/runner-src/package_inspector" "${STAGING_DIRECTORY}/fixtures"
+cp "${REPOSITORY_ROOT}/microvm-image/Dockerfile" "${STAGING_DIRECTORY}/Dockerfile"
+cp "${REPOSITORY_ROOT}"/runner/src/package_inspector/*.py "${STAGING_DIRECTORY}/runner-src/package_inspector/"
+cp "${REPOSITORY_ROOT}/fixtures/catalog.json" "${STAGING_DIRECTORY}/fixtures/catalog.json"
+cp "${REPOSITORY_ROOT}"/fixtures/*.tgz "${STAGING_DIRECTORY}/fixtures/"
+
+if [[ -e "${OUTPUT_DIRECTORY}" && ! -d "${OUTPUT_DIRECTORY}" ]]; then
+  echo "Refusing to replace non-directory: ${OUTPUT_DIRECTORY}" >&2
+  exit 1
+fi
+rm -rf -- "${OUTPUT_DIRECTORY}"
+mv "${STAGING_DIRECTORY}" "${OUTPUT_DIRECTORY}"
+trap - EXIT
+
+echo "Prepared ${OUTPUT_DIRECTORY}"

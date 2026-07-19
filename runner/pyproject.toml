@@ -1,0 +1,44 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "lambda-microvm-package-inspector-runner"
+version = "0.1.0"
+description = "Bounded npm behavior inspector for AWS Lambda MicroVMs"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Lambda MicroVM Package Inspector contributors" }]
+dependencies = []
+
+[project.scripts]
+package-inspector = "package_inspector.cli:main"
+
+[dependency-groups]
+dev = [
+  "jsonschema>=4.23.0,<5",
+  "pyright>=1.1.390,<2",
+  "pytest>=8.3.4,<9",
+  "pytest-cov>=6.0.0,<7",
+  "ruff>=0.8.4,<1"
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/package_inspector"]
+
+[tool.pytest.ini_options]
+addopts = "-ra"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP", "B", "SIM", "RUF"]
+
+[tool.pyright]
+include = ["src", "tests"]
+pythonVersion = "3.11"
+typeCheckingMode = "strict"

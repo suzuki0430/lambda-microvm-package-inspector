@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+readonly REPOSITORY_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+readonly NAMESPACE="package-inspector-system"
+
+if [[ "${CONFIRM_DESTROY:-}" != "LambdaMicrovmPackageInspector" ]]; then
+  echo "Refusing to destroy. Set CONFIRM_DESTROY=LambdaMicrovmPackageInspector." >&2
+  exit 2
+fi
+
+kubectl -n "${NAMESPACE}" delete packageinspections --all --ignore-not-found --wait=true --timeout=10m
+"${REPOSITORY_ROOT}/scripts/verify-cleanup"
+
+cd "${REPOSITORY_ROOT}/infra"
+pnpm cdk destroy LambdaMicrovmPackageInspector --force

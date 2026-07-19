@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Usage: AWS_REGION=us-east-1 ./scripts/preflight
+# Description: Performs read-only checks for the local toolchain and Lambda MicroVM APIs.
+# Returns: 0 when every prerequisite is available; non-zero with a remediation message.
+
+readonly AWS_REGION="${AWS_REGION:-us-east-1}"
+readonly REQUIRED_COMMANDS=(aws kubectl node npm pnpm uv go docker jq)
+
+for command_name in "${REQUIRED_COMMANDS[@]}"; do
+  if ! command -v "${command_name}" >/dev/null 2>&1; then
+    echo "missing required command: ${command_name}" >&2
+    exit 1
+  fi
+done
+
+node_major="$(node --version | tr -d 'v' | cut -d. -f1)"
+if (( node_major < 20 )); then
+  echo "Node.js 20 or newer is required; found $(node --version)." >&2
+  exit 1
+fi
+
+if ! aws lambda-microvms help >/dev/null 2>&1; then
+  echo "AWS CLI does not include lambda-microvms; upgrade AWS CLI v2." >&2
+  exit 1
+fi
+
+if ! aws lambda-core help >/dev/null 2>&1; then
+  echo "AWS CLI does not include lambda-core; upgrade AWS CLI v2." >&2
+  exit 1
+fi
+
+echo "Checking AWS identity in ${AWS_REGION}..."
+aws sts get-caller-identity --region "${AWS_REGION}" --output json
+
+echo "Checking access to Lambda MicroVM managed images..."
+managed_image_arn="$(aws lambda-microvms list-managed-microvm-images \
+  --region "${AWS_REGION}" \
+  --max-results 1 \
+  --query 'items[0].imageArn' \
+  --output text)"
+
+if [[ -z "${managed_image_arn}" || "${managed_image_arn}" == "None" ]]; then
+  echo "No managed Lambda MicroVM image is available in ${AWS_REGION}." >&2
+  exit 1
+fi
+
+echo "Available versions for ${managed_image_arn}:"
+aws lambda-microvms list-managed-microvm-image-versions \
+  --region "${AWS_REGION}" \
+  --image-identifier "${managed_image_arn}" \
+  --query 'items[].{version:imageVersion,createdAt:createdAt}' \
+  --output table
+
+echo "Preflight succeeded. No AWS resources were created."

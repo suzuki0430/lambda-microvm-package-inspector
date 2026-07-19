@@ -1,0 +1,8 @@
+{
+  "app": "node --loader ts-node/esm bin/app.ts",
+  "context": {
+    "microvmArtifactPath": "../build/microvm-artifact",
+    "microvmBaseImageVersion": "1.0",
+    "@aws-cdk/core:defaultCrossStackReferences": "strong"
+  }
+}

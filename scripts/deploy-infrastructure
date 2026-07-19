@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+readonly REPOSITORY_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+readonly MICROVM_BASE_IMAGE_VERSION="${MICROVM_BASE_IMAGE_VERSION:?Set MICROVM_BASE_IMAGE_VERSION from scripts/preflight output}"
+
+"${REPOSITORY_ROOT}/scripts/preflight"
+"${REPOSITORY_ROOT}/scripts/prepare-microvm-artifact"
+
+cd "${REPOSITORY_ROOT}/infra"
+pnpm install --frozen-lockfile
+pnpm cdk deploy LambdaMicrovmPackageInspector \
+  --context "microvmBaseImageVersion=${MICROVM_BASE_IMAGE_VERSION}" \
+  --require-approval never

@@ -1,0 +1,47 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: package-inspection-controller
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
+- apiGroups:
+  - inspection.demo.aws
+  resources:
+  - packageinspections
+  verbs:
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - inspection.demo.aws
+  resources:
+  - packageinspections/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - inspection.demo.aws
+  resources:
+  - packageinspections/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - lambdamicrovms.services.k8s.aws
+  resources:
+  - microvms
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - watch

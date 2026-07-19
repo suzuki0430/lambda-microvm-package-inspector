@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+readonly REPOSITORY_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+readonly STACK_NAME="${STACK_NAME:-LambdaMicrovmPackageInspector}"
+readonly NAMESPACE="package-inspector-system"
+readonly AWS_REGION_VALUE="${AWS_REGION:-${AWS_DEFAULT_REGION:-us-east-1}}"
+
+stack_output() {
+  local output_key="${1:?output key required}"
+  aws cloudformation describe-stacks \
+    --stack-name "${STACK_NAME}" \
+    --region "${AWS_REGION_VALUE}" \
+    --query "Stacks[0].Outputs[?OutputKey=='${output_key}'].OutputValue | [0]" \
+    --output text
+}
+
+readonly CLUSTER_NAME="$(stack_output ClusterName)"
+readonly REPOSITORY_URI="$(stack_output ControllerRepositoryUri)"
+readonly CONNECTOR_ARN="$(stack_output EgressConnectorArn)"
+readonly IMAGE_ARN="$(stack_output MicrovmImageArn)"
+readonly IMAGE_VERSION="$(stack_output MicrovmImageVersion)"
+readonly REPORT_BUCKET="$(stack_output ReportBucketName)"
+readonly IMAGE_TAG="${CONTROLLER_IMAGE_TAG:-demo-$(date -u +%Y%m%d%H%M%S)}"
+
+aws eks update-kubeconfig --name "${CLUSTER_NAME}" --region "${AWS_REGION_VALUE}"
+aws ecr get-login-password --region "${AWS_REGION_VALUE}" | \
+  docker login --username AWS --password-stdin "${REPOSITORY_URI%%/*}"
+docker buildx build \
+  --platform linux/arm64 \
+  --tag "${REPOSITORY_URI}:${IMAGE_TAG}" \
+  --push \
+  "${REPOSITORY_ROOT}/controller"
+
+kubectl apply -f "${REPOSITORY_ROOT}/deploy/crd"
+kubectl apply -f "${REPOSITORY_ROOT}/deploy/rbac/role.yaml"
+kubectl -n "${NAMESPACE}" create configmap package-inspection-report-schema \
+  --from-file=report.schema.json="${REPOSITORY_ROOT}/api/report-schema/report.schema.json" \
+  --dry-run=client -o yaml | kubectl apply -f -
+kubectl apply -f "${REPOSITORY_ROOT}/deploy/controller.yaml"
+kubectl -n "${NAMESPACE}" set image deployment/package-inspection-controller \
+  controller="${REPOSITORY_URI}:${IMAGE_TAG}"
+kubectl -n "${NAMESPACE}" set env deployment/package-inspection-controller \
+  AWS_REGION="${AWS_REGION_VALUE}" \
+  INSPECTOR_IMAGE_IDENTIFIER="${IMAGE_ARN}" \
+  INSPECTOR_IMAGE_VERSION="${IMAGE_VERSION}" \
+  INSPECTOR_EGRESS_CONNECTOR_ARN="${CONNECTOR_ARN}" \
+  REPORT_BUCKET="${REPORT_BUCKET}"
+kubectl -n "${NAMESPACE}" rollout status deployment/package-inspection-controller --timeout=180s

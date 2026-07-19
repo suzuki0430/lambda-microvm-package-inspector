@@ -1,0 +1,36 @@
+{
+  "name": "lambda-microvm-package-inspector-infra",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc --noEmit",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "synth": "cdk synth"
+  },
+  "dependencies": {
+    "@aws-cdk/lambda-layer-kubectl-v33": "2.2.2",
+    "aws-cdk-lib": "2.261.0",
+    "constructs": "10.5.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.31.0",
+    "@types/node": "24.0.15",
+    "aws-cdk": "2.1132.0",
+    "eslint": "9.31.0",
+    "prettier": "3.6.2",
+    "ts-node": "10.9.2",
+    "typescript": "5.8.3",
+    "typescript-eslint": "8.38.0",
+    "vitest": "3.2.6"
+  },
+  "packageManager": "pnpm@10.11.0",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  }
+}
