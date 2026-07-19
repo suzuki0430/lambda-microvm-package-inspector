@@ -23,6 +23,44 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def apply_resource_limits(
+    *,
+    processes: int,
+    cpu_seconds: int,
+    open_files: int,
+    file_bytes: int,
+    process_account_isolated: bool,
+) -> None:
+    """Apply hard limits without constraining an unrelated shared user.
+
+    ``RLIMIT_NPROC`` is counted across the process's real user rather than only
+    across this inspection. Applying it while developing or testing under a
+    shared host account can prevent npm from spawning any child at all. The
+    process limit is therefore installed only when the wrapper is about to
+    switch to the MicroVM's dedicated sandbox UID. The other limits are scoped
+    to this process and remain active in every environment.
+
+    Args:
+        processes: Maximum processes owned by the dedicated sandbox UID.
+        cpu_seconds: Maximum CPU seconds consumed by the process tree.
+        open_files: Maximum simultaneously open file descriptors.
+        file_bytes: Maximum size of files created by the process.
+        process_account_isolated: Whether execution will switch to a dedicated
+            real UID before npm starts.
+    """
+
+    resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+    resource.setrlimit(resource.RLIMIT_CPU, (cpu_seconds, cpu_seconds))
+    resource.setrlimit(resource.RLIMIT_NOFILE, (open_files, open_files))
+    resource.setrlimit(resource.RLIMIT_FSIZE, (file_bytes, file_bytes))
+    if (
+        process_account_isolated
+        and sys.platform.startswith("linux")
+        and hasattr(resource, "RLIMIT_NPROC")
+    ):
+        resource.setrlimit(resource.RLIMIT_NPROC, (processes, processes))
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Apply rlimits, clear supplementary groups, drop UID/GID, and exec.
 
@@ -45,28 +83,19 @@ def main(argv: Sequence[str] | None = None) -> int:
     if not command:
         return 2
 
-    resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
-    resource.setrlimit(
-        resource.RLIMIT_CPU, (arguments.cpu_seconds, arguments.cpu_seconds)
+    running_as_root = os.geteuid() == 0
+    apply_resource_limits(
+        processes=arguments.processes,
+        cpu_seconds=arguments.cpu_seconds,
+        open_files=arguments.open_files,
+        file_bytes=arguments.file_bytes,
+        process_account_isolated=running_as_root and arguments.uid is not None,
     )
-    resource.setrlimit(
-        resource.RLIMIT_NOFILE, (arguments.open_files, arguments.open_files)
-    )
-    resource.setrlimit(
-        resource.RLIMIT_FSIZE, (arguments.file_bytes, arguments.file_bytes)
-    )
-    # RLIMIT_NPROC is counted across the real user. Applying the MicroVM's
-    # dedicated-user limit during macOS development can block all child
-    # processes because the interactive user already owns many processes.
-    if sys.platform.startswith("linux") and hasattr(resource, "RLIMIT_NPROC"):
-        resource.setrlimit(
-            resource.RLIMIT_NPROC, (arguments.processes, arguments.processes)
-        )
 
-    if arguments.gid is not None and os.geteuid() == 0:
+    if arguments.gid is not None and running_as_root:
         os.setgroups([])
         os.setgid(arguments.gid)
-    if arguments.uid is not None and os.geteuid() == 0:
+    if arguments.uid is not None and running_as_root:
         os.setuid(arguments.uid)
 
     os.execvpe(command[0], command, dict(os.environ))

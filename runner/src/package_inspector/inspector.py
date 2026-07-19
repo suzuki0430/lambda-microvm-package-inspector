@@ -200,9 +200,9 @@ def _write_json(path: Path, document: JSONObject) -> None:
 def validate_report_size(report: JSONObject) -> None:
     """Reject a report that cannot cross the bounded controller protocol."""
 
-    encoded = json.dumps(
-        report, separators=(",", ":"), ensure_ascii=False
-    ).encode("utf-8")
+    encoded = json.dumps(report, separators=(",", ":"), ensure_ascii=False).encode(
+        "utf-8"
+    )
     if len(encoded) > MAX_REPORT_BYTES:
         raise InspectionError(f"report exceeds {MAX_REPORT_BYTES} bytes")
 
