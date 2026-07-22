@@ -25,6 +25,12 @@ function template(): Template {
 }
 
 describe("DemoStack", () => {
+  it("uses an EKS version that remains in standard support", () => {
+    template().hasResourceProperties("Custom::AWSCDK-EKS-Cluster", {
+      Config: Match.objectLike({ version: "1.34" }),
+    });
+  });
+
   it("pins the MicroVM image to ARM64, bounded memory, and lifecycle hooks", () => {
     template().hasResourceProperties("AWS::Lambda::MicrovmImage", {
       AdditionalOsCapabilities: [],

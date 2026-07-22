@@ -12,7 +12,7 @@
     "synth": "cdk synth"
   },
   "dependencies": {
-    "@aws-cdk/lambda-layer-kubectl-v33": "2.2.2",
+    "@aws-cdk/lambda-layer-kubectl-v34": "2.2.2",
     "aws-cdk-lib": "2.261.0",
     "constructs": "10.5.0"
   },

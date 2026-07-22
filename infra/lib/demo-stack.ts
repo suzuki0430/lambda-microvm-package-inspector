@@ -1,6 +1,6 @@
 import * as path from "node:path";
 
-import { KubectlV33Layer } from "@aws-cdk/lambda-layer-kubectl-v33";
+import { KubectlV34Layer } from "@aws-cdk/lambda-layer-kubectl-v34";
 import {
   Arn,
   ArnFormat,
@@ -199,8 +199,8 @@ export class DemoStack extends Stack {
     });
 
     const cluster = new eks.Cluster(this, "Cluster", {
-      version: eks.KubernetesVersion.V1_33,
-      kubectlLayer: new KubectlV33Layer(this, "KubectlLayer"),
+      version: eks.KubernetesVersion.V1_34,
+      kubectlLayer: new KubectlV34Layer(this, "KubectlLayer"),
       vpc,
       vpcSubnets: [{ subnetGroupName: "eks" }],
       endpointAccess: eks.EndpointAccess.PUBLIC_AND_PRIVATE,
