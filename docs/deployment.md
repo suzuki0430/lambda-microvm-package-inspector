@@ -38,7 +38,7 @@ MICROVM_BASE_IMAGE_VERSION="$MICROVM_BASE_IMAGE_VERSION" \
 CDKは次を作ります。
 
 - 2 AZ VPC（public、EKS private-with-egress、MicroVM isolated subnet）
-- NAT Gateway 1台、EKS 1.33、arm64 managed node 1台
+- NAT Gateway 1台、EKS 1.34、arm64 managed node 1台
 - outboundなしSecurity GroupとLambda Network Connector
 - encrypted/versioned/private S3 report bucket
 - MicroVM build artifactと`AWS::Lambda::MicrovmImage`
