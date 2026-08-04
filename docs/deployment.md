@@ -8,6 +8,7 @@
 - AWS CLI v2で`lambda-microvms`と`lambda-core` commandが利用可能
 - Node.js 20以上、pnpm 10.11、uv、Go 1.25.12 toolchain、Docker buildx、kubectl、jq
 - EKS、NAT Gateway、EC2、S3、ECR、IAM、Lambda MicroVM、VPC connectorを作成できる権限
+- 変更操作の前に照合する、operator承認済みの12桁AWS account ID
 
 このrepositoryの既定regionは公式例に合わせて`us-east-1`です。別regionを使う場合は、preflightでmanaged MicroVM imageが返ることを必ず確認してください。
 
@@ -16,6 +17,8 @@
 ```bash
 export AWS_REGION=us-east-1
 export AWS_DEFAULT_REGION="$AWS_REGION"
+export AWS_PROFILE=REPLACE_WITH_DEMO_PROFILE
+export EXPECTED_AWS_ACCOUNT_ID=REPLACE_WITH_12_DIGIT_ACCOUNT_ID
 ./scripts/preflight
 ```
 
@@ -38,7 +41,7 @@ MICROVM_BASE_IMAGE_VERSION="$MICROVM_BASE_IMAGE_VERSION" \
 CDKは次を作ります。
 
 - 2 AZ VPC（public、EKS private-with-egress、MicroVM isolated subnet）
-- NAT Gateway 1台、EKS 1.34、arm64 managed node 1台
+- NAT Gateway 1台、EKS 1.34、`t4g.medium` arm64 managed node 1台（自動scale-outなし）
 - outboundなしSecurity GroupとLambda Network Connector
 - encrypted/versioned/private S3 report bucket
 - MicroVM build artifactと`AWS::Lambda::MicrovmImage`
@@ -73,7 +76,7 @@ kubectl get crd packageinspections.inspection.demo.aws
 kubectl -n package-inspector-system get packageinspections -o yaml
 ```
 
-期待値は、両方が`Succeeded`になり、goodよりcanaryのfinding数・scoreが大きく、canaryにlifecycle、process、`/tmp`、DNS、network、credential path evidenceが含まれることです。S3のJSON report SHA-256とCR statusのSHA-256が一致することも確認します。
+期待値は、両方が`Succeeded`になり、goodが`low`かつ`0/100`、canaryが`critical`かつ`95/100`になることです。canaryにはlifecycle、process、`/tmp`、DNS、network、credential path evidenceが含まれます。S3のJSON report SHA-256とCR statusのSHA-256が一致することも確認します。
 
 ## 5. failure drill
 
@@ -90,8 +93,10 @@ ACK/IAM障害でfinalizerが止まった場合、finalizerを手で外す前にA
 
 ```bash
 CONFIRM_DESTROY=LambdaMicrovmPackageInspector \
-AWS_REGION=us-east-1 \
+AWS_REGION="$AWS_REGION" \
 ./scripts/destroy-demo
 ```
 
 scriptは全`PackageInspection`を削除し、active/suspended/terminating MicroVMが0であることを確認してからCDK destroyします。Network Connectorは使用中のMicroVMがあると削除できません。
+
+`deploy-infrastructure`、`deploy-controller`、`run-demo`、`destroy-demo`は、実行時のSTS accountが`EXPECTED_AWS_ACCOUNT_ID`と一致しなければ変更前に停止します。値をその場でSTSから自動設定すると誤account防止にならないため、operatorが既知のIDを明示してください。

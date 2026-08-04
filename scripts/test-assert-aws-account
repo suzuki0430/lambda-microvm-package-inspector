@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Usage: ./scripts/test-assert-aws-account
+# Description: Verifies the AWS account guard rejects unsafe identities and accepts an exact match.
+# Returns: 0 when every account guard scenario behaves as expected.
+
+readonly REPOSITORY_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+readonly GUARD="${REPOSITORY_ROOT}/scripts/assert-aws-account"
+readonly TEST_PATH="${REPOSITORY_ROOT}/scripts/testdata:${PATH}"
+readonly EXPECTED_ID="111122223333"
+
+# Usage: expect_failure <description> <command> [arguments...]
+# Description: Fails the test suite when a command unexpectedly succeeds.
+# Returns: 0 only when the supplied command fails.
+expect_failure() {
+  local description="${1:?description required}"
+  shift
+
+  if "$@" >/dev/null 2>&1; then
+    echo "expected failure: ${description}" >&2
+    exit 1
+  fi
+}
+
+expect_failure \
+  "missing expected account" \
+  env -u EXPECTED_AWS_ACCOUNT_ID PATH="${TEST_PATH}" FAKE_AWS_ACCOUNT_ID="${EXPECTED_ID}" "${GUARD}"
+expect_failure \
+  "malformed expected account" \
+  env PATH="${TEST_PATH}" EXPECTED_AWS_ACCOUNT_ID="not-an-account" FAKE_AWS_ACCOUNT_ID="${EXPECTED_ID}" "${GUARD}"
+expect_failure \
+  "mismatched active account" \
+  env PATH="${TEST_PATH}" EXPECTED_AWS_ACCOUNT_ID="${EXPECTED_ID}" FAKE_AWS_ACCOUNT_ID="999900001111" "${GUARD}"
+
+env \
+  PATH="${TEST_PATH}" \
+  EXPECTED_AWS_ACCOUNT_ID="${EXPECTED_ID}" \
+  FAKE_AWS_ACCOUNT_ID="${EXPECTED_ID}" \
+  "${GUARD}" >/dev/null
+
+echo "AWS account guard tests passed."

@@ -31,6 +31,28 @@ describe("DemoStack", () => {
     });
   });
 
+  it("runs the control plane workloads on one bounded ARM node", () => {
+    template().hasResourceProperties("AWS::EKS::Nodegroup", {
+      AmiType: "AL2023_ARM_64_STANDARD",
+      DiskSize: 30,
+      InstanceTypes: ["t4g.medium"],
+      ScalingConfig: {
+        DesiredSize: 1,
+        MaxSize: 1,
+        MinSize: 1,
+      },
+    });
+  });
+
+  it("expires EKS control plane logs after one week", () => {
+    const resources = template().findResources("Custom::LogRetention");
+    const serialized = JSON.stringify(resources);
+
+    expect(serialized).toContain("/aws/eks/");
+    expect(serialized).toContain("/cluster");
+    expect(serialized).toContain('"RetentionInDays":7');
+  });
+
   it("pins the MicroVM image to ARM64, bounded memory, and lifecycle hooks", () => {
     template().hasResourceProperties("AWS::Lambda::MicrovmImage", {
       AdditionalOsCapabilities: [],

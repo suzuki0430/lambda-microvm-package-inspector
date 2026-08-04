@@ -2,6 +2,8 @@
 
 Amazon EKSを実行基盤ではなくコントロールプレーンとして使い、ACKの`Microvm` Custom Resourceから検査ごとにAWS Lambda MicroVMを払い出す技術デモです。MVPは、イメージへ事前格納した2つの無害なnpmパッケージだけを対象にします。
 
+久しぶりに作業を再開するときは、目的・期待結果・安全な再開手順をまとめた[PROJECT_STATUS.md](PROJECT_STATUS.md)から確認してください。
+
 - `@demo/good@1.0.0`: lifecycle scriptを持たない比較用パッケージ
 - `@demo/canary@1.0.0`: `/tmp`書き込み、子プロセス、ダミー環境変数参照、`.test`ドメインのDNS/HTTP試行、存在しないAWS credentialsパス参照を行う無害なfixture
 
@@ -70,11 +72,16 @@ macOS上のrunner単体テストでは`strace`が使えません。Dockerまた�
 AWS操作の前に[デプロイ手順](docs/deployment.md)、[AWS技術スパイク](docs/aws-spikes.md)、[脅威モデル](docs/threat-model.md)を読んでください。専用の非本番アカウントを前提とします。
 
 ```bash
-AWS_REGION=us-east-1 ./scripts/preflight
-AWS_REGION=us-east-1 \
+export AWS_PROFILE=REPLACE_WITH_DEMO_PROFILE
+export AWS_REGION=us-east-1
+export AWS_DEFAULT_REGION="$AWS_REGION"
+export EXPECTED_AWS_ACCOUNT_ID=REPLACE_WITH_12_DIGIT_ACCOUNT_ID
+
+./scripts/preflight
+AWS_REGION="$AWS_REGION" \
 MICROVM_BASE_IMAGE_VERSION=PRECHECKED_VERSION \
 ./scripts/deploy-infrastructure
-AWS_REGION=us-east-1 ./scripts/deploy-controller
+AWS_REGION="$AWS_REGION" ./scripts/deploy-controller
 ./scripts/run-demo
 ```
 
@@ -86,7 +93,7 @@ AWS_REGION=us-east-1 ./scripts/deploy-controller
 
 ```bash
 CONFIRM_DESTROY=LambdaMicrovmPackageInspector \
-AWS_REGION=us-east-1 \
+AWS_REGION="$AWS_REGION" \
 ./scripts/destroy-demo
 ```
 

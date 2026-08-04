@@ -9,6 +9,8 @@ if [[ "${CONFIRM_DESTROY:-}" != "LambdaMicrovmPackageInspector" ]]; then
   exit 2
 fi
 
+"${REPOSITORY_ROOT}/scripts/assert-aws-account"
+
 kubectl -n "${NAMESPACE}" delete packageinspections --all --ignore-not-found --wait=true --timeout=10m
 "${REPOSITORY_ROOT}/scripts/verify-cleanup"
 

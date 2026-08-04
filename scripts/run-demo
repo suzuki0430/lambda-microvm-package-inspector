@@ -4,6 +4,8 @@ set -euo pipefail
 readonly REPOSITORY_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 readonly NAMESPACE="package-inspector-system"
 
+"${REPOSITORY_ROOT}/scripts/assert-aws-account"
+
 for inspection in good-package canary-package; do
   if kubectl -n "${NAMESPACE}" get "packageinspection/${inspection}" >/dev/null 2>&1; then
     echo "Refusing to reuse existing PackageInspection ${inspection}; delete it and confirm cleanup first." >&2

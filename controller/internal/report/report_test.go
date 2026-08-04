@@ -10,12 +10,54 @@ import (
 // TestEvaluateGoodReport verifies that absence of evidence remains low risk.
 func TestEvaluateGoodReport(t *testing.T) {
 	t.Parallel()
-	report := &Report{Artifact: Artifact{IntegrityVerified: true}}
+	report := &Report{
+		Artifact: Artifact{IntegrityVerified: true},
+		DynamicAnalysis: DynamicAnalysis{Processes: []Event{
+			{
+				Type:         "process-exec",
+				EvidenceType: "strace",
+				Executable:   "/usr/bin/python3",
+				ArgumentsRaw: `"/usr/bin/python3", "-m", "package_inspector.sandbox_exec", "--", "npm", "install"`,
+			},
+			{
+				Type:         "process-exec",
+				EvidenceType: "strace",
+				Executable:   "/usr/local/bin/node",
+				ArgumentsRaw: `"node", "/usr/local/bin/npm", "install", "--offline"`,
+			},
+		}},
+	}
 
 	assessment := Evaluate(report)
 
 	if assessment.Score != 0 || assessment.Level != "low" || len(assessment.Findings) != 0 {
 		t.Fatalf("unexpected good assessment: %#v", assessment)
+	}
+}
+
+// TestEvaluateSimilarProcessIsNotTrusted verifies that partial command matches
+// cannot suppress a package-created process finding.
+func TestEvaluateSimilarProcessIsNotTrusted(t *testing.T) {
+	t.Parallel()
+	report := &Report{
+		Artifact: Artifact{IntegrityVerified: true},
+		DynamicAnalysis: DynamicAnalysis{Processes: []Event{
+			{
+				Type:         "process-exec",
+				EvidenceType: "strace",
+				Executable:   "/usr/local/bin/node",
+				ArgumentsRaw: `"node", "/usr/local/bin/npm", "install", "untrusted.tgz"`,
+			},
+		}},
+	}
+
+	assessment := Evaluate(report)
+
+	if assessment.Score != 10 || assessment.Level != "low" {
+		t.Fatalf("unexpected process assessment: %#v", assessment)
+	}
+	if len(assessment.FindingIDs()) != 1 || assessment.FindingIDs()[0] != "dynamic.child-process" {
+		t.Fatalf("expected child-process finding, got %v", assessment.FindingIDs())
 	}
 }
 
@@ -50,7 +92,15 @@ func TestEvaluateCanaryReport(t *testing.T) {
 			Patterns:         []Pattern{{RuleID: "network-api"}},
 		},
 		DynamicAnalysis: DynamicAnalysis{
-			Processes:        []Event{{CanaryType: "child-process"}},
+			Processes: []Event{
+				{
+					Type:         "process-exec",
+					EvidenceType: "strace",
+					Executable:   "/usr/bin/python3",
+					ArgumentsRaw: `"/usr/bin/python3", "-m", "package_inspector.sandbox_exec"`,
+				},
+				{CanaryType: "child-process"},
+			},
 			FileAccesses:     []Event{{CanaryType: "credential-path-open"}},
 			DNS:              []Event{{CanaryType: "dns-attempt"}},
 			Network:          []Event{{CanaryType: "http-result"}},

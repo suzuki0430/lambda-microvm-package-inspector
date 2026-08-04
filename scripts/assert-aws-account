@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Usage: EXPECTED_AWS_ACCOUNT_ID=123456789012 ./scripts/assert-aws-account
+# Description: Stops mutating workflows unless the active AWS identity matches the operator-approved account.
+# Returns: 0 for an exact match; 2 for missing, malformed, or mismatched account IDs.
+
+readonly EXPECTED_ACCOUNT_ID="${EXPECTED_AWS_ACCOUNT_ID:-}"
+
+if [[ ! "${EXPECTED_ACCOUNT_ID}" =~ ^[0-9]{12}$ ]]; then
+  echo "Set EXPECTED_AWS_ACCOUNT_ID to the approved 12-digit AWS account ID." >&2
+  exit 2
+fi
+
+readonly ACTUAL_ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
+
+if [[ "${ACTUAL_ACCOUNT_ID}" != "${EXPECTED_ACCOUNT_ID}" ]]; then
+  echo "AWS account guard failed: expected ${EXPECTED_ACCOUNT_ID}, got ${ACTUAL_ACCOUNT_ID}." >&2
+  exit 2
+fi
+
+echo "AWS account guard passed for ${ACTUAL_ACCOUNT_ID}."

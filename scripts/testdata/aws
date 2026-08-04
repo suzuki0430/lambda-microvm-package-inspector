@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Test double for the one AWS STS call made by scripts/assert-aws-account.
+
+if [[ "$*" != "sts get-caller-identity --query Account --output text" ]]; then
+  echo "unexpected fake AWS CLI arguments: $*" >&2
+  exit 3
+fi
+
+printf '%s\n' "${FAKE_AWS_ACCOUNT_ID:?Set FAKE_AWS_ACCOUNT_ID for this test double}"

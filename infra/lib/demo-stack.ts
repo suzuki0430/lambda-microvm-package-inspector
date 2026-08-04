@@ -213,12 +213,18 @@ export class DemoStack extends Stack {
     });
     cluster.addNodegroupCapacity("SystemNodes", {
       amiType: eks.NodegroupAmiType.AL2023_ARM_64_STANDARD,
-      instanceTypes: [new ec2.InstanceType("m7g.large")],
+      instanceTypes: [new ec2.InstanceType("t4g.medium")],
       minSize: 1,
       desiredSize: 1,
-      maxSize: 3,
+      maxSize: 1,
       diskSize: 30,
       subnets: { subnetGroupName: "eks" },
+    });
+
+    new logs.LogRetention(this, "EksControlPlaneLogRetention", {
+      logGroupName: `/aws/eks/${cluster.clusterName}/cluster`,
+      retention: logs.RetentionDays.ONE_WEEK,
+      removalPolicy: RemovalPolicy.DESTROY,
     });
 
     const namespace = "package-inspector-system";
