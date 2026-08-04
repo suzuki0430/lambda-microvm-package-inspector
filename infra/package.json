@@ -29,6 +29,10 @@
   },
   "packageManager": "pnpm@10.11.0",
   "pnpm": {
+    "overrides": {
+      "brace-expansion@1": "1.1.18",
+      "brace-expansion@2": "2.1.4"
+    },
     "onlyBuiltDependencies": [
       "esbuild"
     ]

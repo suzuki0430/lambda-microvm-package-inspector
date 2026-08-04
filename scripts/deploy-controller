@@ -6,6 +6,8 @@ readonly STACK_NAME="${STACK_NAME:-LambdaMicrovmPackageInspector}"
 readonly NAMESPACE="package-inspector-system"
 readonly AWS_REGION_VALUE="${AWS_REGION:-${AWS_DEFAULT_REGION:-us-east-1}}"
 
+"${REPOSITORY_ROOT}/scripts/assert-aws-account"
+
 stack_output() {
   local output_key="${1:?output key required}"
   aws cloudformation describe-stacks \

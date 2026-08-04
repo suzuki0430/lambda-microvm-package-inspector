@@ -130,6 +130,8 @@ type Event struct {
 	EvidenceType           string `json:"evidenceType"`
 	CanaryType             string `json:"canaryType,omitempty"`
 	Path                   string `json:"path,omitempty"`
+	Executable             string `json:"executable,omitempty"`
+	ArgumentsRaw           string `json:"argumentsRaw,omitempty"`
 	CredentialPathCategory string `json:"credentialPathCategory,omitempty"`
 }
 
@@ -188,7 +190,7 @@ func Evaluate(report *Report) Assessment {
 	add("npm.lifecycle-script", 15, len(report.StaticAnalysis.LifecycleScripts), "Package declares npm lifecycle scripts")
 	add("static.suspicious-pattern", 10, len(report.StaticAnalysis.Patterns), "Static heuristics matched sensitive APIs or paths")
 	add("archive.warning", 20, len(report.StaticAnalysis.ArchiveWarnings), "Archive contains unusual or unsafe entries")
-	add("dynamic.child-process", 10, len(report.DynamicAnalysis.Processes), "Installation created or executed child processes")
+	add("dynamic.child-process", 10, packageProcessEvents(report.DynamicAnalysis.Processes), "Installation created or executed child processes")
 	add("dynamic.credential-path", 25, credentialEvents(report.DynamicAnalysis.FileAccesses), "A known credential path was opened or attempted")
 	add("dynamic.dns", 10, len(report.DynamicAnalysis.DNS), "Installation attempted DNS resolution")
 	add("dynamic.network", 20, len(report.DynamicAnalysis.Network), "Installation attempted an outbound network connection")
@@ -204,6 +206,36 @@ func Evaluate(report *Report) Assessment {
 		score = 100
 	}
 	return Assessment{Score: score, Level: level(score), Findings: findings}
+}
+
+// packageProcessEvents excludes the two deterministic process executions that
+// launch every inspection. The events remain in the JSON evidence; only the
+// risk calculation ignores trusted harness startup noise.
+func packageProcessEvents(events []Event) int {
+	count := 0
+	for _, event := range events {
+		if isHarnessProcess(event) {
+			continue
+		}
+		count++
+	}
+	return count
+}
+
+// isHarnessProcess recognizes exact commands baked into the versioned runner
+// image. Keeping this allowlist narrow avoids hiding unrelated child processes.
+func isHarnessProcess(event Event) bool {
+	if event.Type != "process-exec" || event.EvidenceType != "strace" {
+		return false
+	}
+	if event.Executable == "/usr/bin/python3" {
+		return strings.Contains(event.ArgumentsRaw, `"-m", "package_inspector.sandbox_exec"`)
+	}
+	if event.Executable == "/usr/local/bin/node" {
+		return strings.Contains(event.ArgumentsRaw, `"/usr/local/bin/npm", "install"`) &&
+			strings.Contains(event.ArgumentsRaw, `"--offline"`)
+	}
+	return false
 }
 
 // FindingIDs returns stable ordered identifiers for compact Kubernetes status.

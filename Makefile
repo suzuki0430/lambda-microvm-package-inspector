@@ -10,7 +10,7 @@ RUNNER_DIR := runner
 CONTROLLER_DIR := controller
 INFRA_DIR := infra
 
-.PHONY: help fixtures fixtures-check microvm-artifact runner-format runner-lint runner-test runner-integration runner-scan-good runner-scan-canary \
+.PHONY: help fixtures fixtures-check account-guard-test microvm-artifact runner-format runner-lint runner-test runner-integration runner-scan-good runner-scan-canary \
 	controller-format controller-generate controller-test controller-audit infra-format infra-test infra-audit security-audit synth test preflight verify-cleanup
 
 help: ## Show available targets.
@@ -24,6 +24,9 @@ fixtures-check: ## Parse-check fixture and catalog JavaScript without executing 
 	node --check packages/good/index.js
 	node --check packages/canary/index.js
 	node --check packages/canary/postinstall.js
+
+account-guard-test: ## Verify destructive AWS workflows reject the wrong account.
+	./scripts/test-assert-aws-account
 
 microvm-artifact: fixtures ## Assemble the MicroVM image build context.
 	./scripts/prepare-microvm-artifact
@@ -78,7 +81,7 @@ security-audit: controller-audit infra-audit ## Run dependency vulnerability che
 synth: microvm-artifact ## Synthesize the AWS CDK stack without deploying it.
 	cd $(INFRA_DIR) && $(PNPM) synth
 
-test: fixtures-check runner-lint runner-test controller-test infra-test ## Run all local quality gates.
+test: fixtures-check account-guard-test runner-lint runner-test controller-test infra-test ## Run all local quality gates.
 
 preflight: ## Verify local tools and AWS Lambda MicroVM access without creating resources.
 	./scripts/preflight
