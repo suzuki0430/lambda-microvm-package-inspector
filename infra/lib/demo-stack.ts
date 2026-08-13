@@ -257,8 +257,7 @@ export class DemoStack extends Stack {
     );
 
     const ackController = cluster.addHelmChart("LambdaMicrovmsAckController", {
-      chart: "lambdamicrovms-chart",
-      repository: "oci://public.ecr.aws/aws-controllers-k8s",
+      chart: "oci://public.ecr.aws/aws-controllers-k8s/lambdamicrovms-chart",
       version: "0.1.1",
       namespace,
       createNamespace: false,

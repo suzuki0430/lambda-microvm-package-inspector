@@ -79,6 +79,17 @@ describe("DemoStack", () => {
     }
   });
 
+  it("uses the full OCI reference for the ACK Helm chart", () => {
+    const charts = template().findResources("Custom::AWSCDK-EKS-HelmChart");
+    const chart = Object.values(charts)[0];
+
+    expect(chart?.Properties).toMatchObject({
+      Chart: "oci://public.ecr.aws/aws-controllers-k8s/lambdamicrovms-chart",
+      Version: "0.1.1",
+    });
+    expect(chart?.Properties).not.toHaveProperty("Repository");
+  });
+
   it("expires EKS control plane logs after one week", () => {
     const resources = template().findResources("Custom::LogRetention");
     const serialized = JSON.stringify(resources);
