@@ -44,6 +44,41 @@ describe("DemoStack", () => {
     });
   });
 
+  it("creates the system namespace before namespaced control-plane resources", () => {
+    const resources = template().toJSON().Resources as Record<
+      string,
+      {
+        Type: string;
+        Properties?: { Manifest?: unknown };
+        DependsOn?: string[];
+      }
+    >;
+    const namespaceEntry = Object.entries(resources).find(
+      ([, resource]) =>
+        resource.Type === "Custom::AWSCDK-EKS-KubernetesResource" &&
+        String(resource.Properties?.Manifest).includes('"kind":"Namespace"'),
+    );
+
+    expect(namespaceEntry).toBeDefined();
+    const namespaceLogicalId = namespaceEntry?.[0];
+    const namespacedResources = Object.entries(resources)
+      .filter(
+        ([logicalId, resource]) =>
+          logicalId !== namespaceLogicalId &&
+          (resource.Type === "Custom::AWSCDK-EKS-HelmChart" ||
+            (resource.Type === "Custom::AWSCDK-EKS-KubernetesResource" &&
+              JSON.stringify(resource.Properties?.Manifest).includes(
+                "package-inspector-system",
+              ))),
+      )
+      .map(([, resource]) => resource);
+
+    expect(namespacedResources).toHaveLength(3);
+    for (const resource of namespacedResources) {
+      expect(resource.DependsOn).toContain(namespaceLogicalId);
+    }
+  });
+
   it("expires EKS control plane logs after one week", () => {
     const resources = template().findResources("Custom::LogRetention");
     const serialized = JSON.stringify(resources);

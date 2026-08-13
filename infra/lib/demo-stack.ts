@@ -228,10 +228,16 @@ export class DemoStack extends Stack {
     });
 
     const namespace = "package-inspector-system";
+    const systemNamespace = cluster.addManifest("PackageInspectorNamespace", {
+      apiVersion: "v1",
+      kind: "Namespace",
+      metadata: { name: namespace },
+    });
     const ackServiceAccount = cluster.addServiceAccount("AckServiceAccount", {
       name: "ack-lambdamicrovms-controller",
       namespace,
     });
+    ackServiceAccount.node.addDependency(systemNamespace);
     ackServiceAccount.addToPrincipalPolicy(
       new iam.PolicyStatement({
         actions: [
@@ -250,12 +256,12 @@ export class DemoStack extends Stack {
       }),
     );
 
-    cluster.addHelmChart("LambdaMicrovmsAckController", {
+    const ackController = cluster.addHelmChart("LambdaMicrovmsAckController", {
       chart: "lambdamicrovms-chart",
       repository: "oci://public.ecr.aws/aws-controllers-k8s",
       version: "0.1.1",
       namespace,
-      createNamespace: true,
+      createNamespace: false,
       wait: true,
       values: {
         aws: { region: this.region },
@@ -271,6 +277,7 @@ export class DemoStack extends Stack {
         reconcile: { resources: ["Microvm"] },
       },
     });
+    ackController.node.addDependency(systemNamespace, ackServiceAccount);
 
     const controllerServiceAccount = cluster.addServiceAccount(
       "ControllerServiceAccount",
@@ -279,6 +286,7 @@ export class DemoStack extends Stack {
         namespace,
       },
     );
+    controllerServiceAccount.node.addDependency(systemNamespace);
     controllerServiceAccount.addToPrincipalPolicy(
       new iam.PolicyStatement({
         actions: ["lambda:CreateMicrovmAuthToken"],
