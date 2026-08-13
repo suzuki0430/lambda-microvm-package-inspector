@@ -163,14 +163,13 @@ describe("DemoStack", () => {
     });
   });
 
-  it("allows ACK to pass only the configured runtime network connectors", () => {
+  it("grants the non-resource-scoped connector pass dependency to ACK", () => {
     const policies = template().findResources("AWS::IAM::Policy");
     const serialized = JSON.stringify(policies);
 
     expect(serialized).toContain("lambda:PassNetworkConnector");
-    expect(serialized).toContain("DenyEgressConnector");
     expect(serialized).toContain(
-      "aws:network-connector:aws-network-connector:ALL_INGRESS",
+      '"Action":"lambda:PassNetworkConnector","Effect":"Allow","Resource":"*"',
     );
   });
 

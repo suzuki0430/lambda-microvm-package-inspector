@@ -124,7 +124,6 @@ export class DemoStack extends Stack {
     );
     const egressConnectorARN =
       egressConnector.networkConnectorRef.networkConnectorArn;
-    const managedIngressConnectorARN = `arn:${this.partition}:lambda:${this.region}:aws:network-connector:aws-network-connector:ALL_INGRESS`;
     const buildEgressConnectorARN = `arn:${this.partition}:lambda:${this.region}:aws:network-connector:aws-network-connector:INTERNET_EGRESS`;
 
     const reportBucket = new s3.Bucket(this, "ReportBucket", {
@@ -269,8 +268,11 @@ export class DemoStack extends Stack {
     );
     ackServiceAccount.addToPrincipalPolicy(
       new iam.PolicyStatement({
+        // PassNetworkConnector has no resource type or condition key in the
+        // Lambda service authorization table, so IAM requires Resource "*".
+        // The orchestrator fixes both connector ARNs in the generated CR.
         actions: ["lambda:PassNetworkConnector"],
-        resources: [egressConnectorARN, managedIngressConnectorARN],
+        resources: ["*"],
       }),
     );
 
