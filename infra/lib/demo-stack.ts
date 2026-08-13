@@ -2,8 +2,6 @@ import * as path from "node:path";
 
 import { KubectlV34Layer } from "@aws-cdk/lambda-layer-kubectl-v34";
 import {
-  Arn,
-  ArnFormat,
   CfnOutput,
   Duration,
   RemovalPolicy,
@@ -309,17 +307,7 @@ export class DemoStack extends Stack {
     controllerServiceAccount.addToPrincipalPolicy(
       new iam.PolicyStatement({
         actions: ["lambda:CreateMicrovmAuthToken"],
-        resources: [
-          Arn.format(
-            {
-              service: "lambda",
-              resource: "microvm",
-              resourceName: "*",
-              arnFormat: ArnFormat.COLON_RESOURCE_NAME,
-            },
-            this,
-          ),
-        ],
+        resources: [microvmImage.attrImageArn],
       }),
     );
     reportBucket.grantPut(controllerServiceAccount);

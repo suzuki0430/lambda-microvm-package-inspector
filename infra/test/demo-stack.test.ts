@@ -203,4 +203,15 @@ describe("DemoStack", () => {
       Object.keys(roles).some((name) => name.includes("ExecutionRole")),
     ).toBe(false);
   });
+
+  it("scopes runner auth-token creation to the inspector image", () => {
+    const policies = template().findResources("AWS::IAM::Policy");
+    const serialized = JSON.stringify(policies);
+
+    expect(serialized).toContain("lambda:CreateMicrovmAuthToken");
+    expect(serialized).toContain("InspectorImage");
+    expect(serialized).not.toContain(
+      '"Action":"lambda:CreateMicrovmAuthToken","Effect":"Allow","Resource":{"Fn::Join"',
+    );
+  });
 });
