@@ -124,6 +124,7 @@ export class DemoStack extends Stack {
     );
     const egressConnectorARN =
       egressConnector.networkConnectorRef.networkConnectorArn;
+    const managedIngressConnectorARN = `arn:${this.partition}:lambda:${this.region}:aws:network-connector:aws-network-connector:ALL_INGRESS`;
     const buildEgressConnectorARN = `arn:${this.partition}:lambda:${this.region}:aws:network-connector:aws-network-connector:INTERNET_EGRESS`;
 
     const reportBucket = new s3.Bucket(this, "ReportBucket", {
@@ -264,6 +265,12 @@ export class DemoStack extends Stack {
           "lambda:UntagResource",
         ],
         resources: ["*"],
+      }),
+    );
+    ackServiceAccount.addToPrincipalPolicy(
+      new iam.PolicyStatement({
+        actions: ["lambda:PassNetworkConnector"],
+        resources: [egressConnectorARN, managedIngressConnectorARN],
       }),
     );
 

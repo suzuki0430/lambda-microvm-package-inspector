@@ -163,6 +163,17 @@ describe("DemoStack", () => {
     });
   });
 
+  it("allows ACK to pass only the configured runtime network connectors", () => {
+    const policies = template().findResources("AWS::IAM::Policy");
+    const serialized = JSON.stringify(policies);
+
+    expect(serialized).toContain("lambda:PassNetworkConnector");
+    expect(serialized).toContain("DenyEgressConnector");
+    expect(serialized).toContain(
+      "aws:network-connector:aws-network-connector:ALL_INGRESS",
+    );
+  });
+
   it("allows network only while building the trusted MicroVM image", () => {
     const images = template().findResources("AWS::Lambda::MicrovmImage");
     const serialized = JSON.stringify(Object.values(images)[0]);
