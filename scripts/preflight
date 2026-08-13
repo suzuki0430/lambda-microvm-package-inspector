@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Usage: AWS_REGION=us-east-1 ./scripts/preflight
+# Usage: AWS_REGION=ap-northeast-1 ./scripts/preflight
 # Description: Performs read-only checks for the local toolchain and Lambda MicroVM APIs.
 # Returns: 0 when every prerequisite is available; non-zero with a remediation message.
 
-readonly AWS_REGION="${AWS_REGION:-us-east-1}"
+readonly AWS_REGION="${AWS_REGION:-ap-northeast-1}"
 readonly REQUIRED_COMMANDS=(aws kubectl node npm pnpm uv go docker jq)
 
 for command_name in "${REQUIRED_COMMANDS[@]}"; do

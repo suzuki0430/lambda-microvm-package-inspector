@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Usage: AWS_REGION=us-east-1 ./scripts/verify-cleanup
+# Usage: AWS_REGION=ap-northeast-1 ./scripts/verify-cleanup
 # Description: Fails when any Lambda MicroVM has not reached TERMINATED.
 # Returns: 0 when no billable MicroVM remains; 1 when cleanup is incomplete.
 
-readonly AWS_REGION="${AWS_REGION:-us-east-1}"
+readonly AWS_REGION="${AWS_REGION:-ap-northeast-1}"
 
 if ! aws lambda-microvms help >/dev/null 2>&1; then
   echo "AWS CLI does not include lambda-microvms; upgrade AWS CLI v2." >&2
