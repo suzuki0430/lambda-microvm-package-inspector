@@ -12,25 +12,30 @@ Amazon EKSを実行基盤ではなくコントロールプレーンとして使�
 ## 何が実装されているか
 
 ```text
-trusted control plane (EKS)                  untrusted data plane
+trusted control plane (EKS)                             untrusted data plane
 
 PackageInspection CR
         |
+        | watch
         v
-Go Orchestrator ------ creates ------> ACK Microvm CR
-   |                                      |
-   | CreateMicrovmAuthToken               | RunMicrovm / Get / Terminate
-   | (JWE, port 8080, 5 min)               v
-   +------------------------------> Lambda MicroVM
-                                          |
-                                          | Python supervisor (trusted)
-                                          |   -> static archive inspection
-                                          |   -> strace + rlimits
-                                          |   -> npm install as UID 10001
-                                          v
-                                     JSON report
-        ^                                  |
-        +----------------------------------+
+自作Go controller ------ creates ------> ACK Microvm CR
+        |                                      |
+        |                                      | watch
+        |                                      v
+        |                               AWS ACK controller
+        |                                      |
+        | CreateMicrovmAuthToken               | RunMicrovm / Get / Terminate
+        | (JWE, port 8080, 5 min)               v
+        +------------------------------> Lambda MicroVM
+                                               |
+                                               | Python supervisor (trusted)
+                                               |   -> static archive inspection
+                                               |   -> strace + rlimits
+                                               |   -> npm install as UID 10001
+                                               v
+                                          JSON report
+        ^                                      |
+        +--------------------------------------+
         |
         +-- JSON Schema validation -> rule-based risk -> S3 JSON/Markdown
         +-- delete ACK Microvm CR -> ACK terminates MicroVM
@@ -46,6 +51,33 @@ Go Orchestrator ------ creates ------> ACK Microvm CR
 - `deploy/`: CRD、最小RBAC、controller Deployment、デモCR
 
 詳細は[アーキテクチャ](docs/architecture.md)、[脅威モデル](docs/threat-model.md)、[制約](docs/limitations.md)を参照してください。
+
+## AWSで検査を起動する仕組み
+
+検査の実行トリガーは、対象namespaceへの`PackageInspection` Custom Resource（CR）の作成です。現状はEventBridge、cron、SQS、npm公開イベントなどには接続していません。`./scripts/run-demo`は、次の2つの検査依頼を`kubectl apply`します。
+
+- `deploy/examples/good.yaml`: `@demo/good@1.0.0`の検査依頼
+- `deploy/examples/canary.yaml`: `@demo/canary@1.0.0`の検査依頼
+
+どちらもパッケージ本体ではなく、ecosystem、パッケージ名、version、timeoutを指定する`PackageInspection` CRです。自作Go controllerがこのCRをwatchして検査全体を進めます。
+
+controllerは2種類あり、責務が異なります。
+
+- **自作Go controller**: `PackageInspection`を検証し、ACKの`Microvm` CRを作成します。MicroVMが`RUNNING`になるとrunnerへ`POST /v1/scans`を送り、完了確認、report取得・検証・S3保存、`Microvm` CR削除まで担当します。
+- **AWS ACK controller**: 自作Go controllerが作成した`Microvm` CRをwatchし、Lambda MicroVM APIを呼んで実際のMicroVMを起動・取得・停止します。
+
+したがって、ACKの`Microvm` CRを作るのは自作Go controllerで、AWS上のMicroVMを実際に操作するのはAWS ACK controllerです。
+
+## fixtureがMicroVMイメージへ入るタイミング
+
+good/canary fixtureは検査実行時にnpm registryから取得しません。`./scripts/deploy-infrastructure`がCDK deploy前に`scripts/prepare-microvm-artifact`を呼び、次の順でMicroVM Imageへ格納します。
+
+1. `scripts/build-fixtures`がgood/canaryの`.tgz`とcatalogを生成する
+2. runner、`fixtures/catalog.json`、fixtureの`.tgz`を`build/microvm-artifact`へコピーする
+3. CDKがbuild artifactをS3へuploadし、`AWS::Lambda::MicrovmImage`のbuildを開始する
+4. `microvm-image/Dockerfile`がfixtureを`/opt/package-inspector/fixtures/`へコピーする
+
+各`PackageInspection`は、このfixtureを既に含む同じMicroVM Imageから新しいMicroVMを起動します。fixtureやrunnerを変更した場合は、`deploy-infrastructure`を再実行してMicroVM Imageを更新する必要があります。
 
 ## ローカルで試す
 
@@ -69,11 +101,11 @@ macOS上のrunner単体テストでは`strace`が使えません。Dockerまた�
 
 ## AWSへデプロイする
 
-AWS操作の前に[デプロイ手順](docs/deployment.md)、[AWS技術スパイク](docs/aws-spikes.md)、[脅威モデル](docs/threat-model.md)を読んでください。専用の非本番アカウントを前提とします。
+AWS操作の前に[デプロイ手順](docs/deployment.md)、[AWS技術スパイク](docs/aws-spikes.md)、[脅威モデル](docs/threat-model.md)を読んでください。専用の非本番アカウントを前提とします。このrepositoryの既定regionと以下の例は`ap-northeast-1`です。
 
 ```bash
 export AWS_PROFILE=REPLACE_WITH_DEMO_PROFILE
-export AWS_REGION=us-east-1
+export AWS_REGION=ap-northeast-1
 export AWS_DEFAULT_REGION="$AWS_REGION"
 export EXPECTED_AWS_ACCOUNT_ID=REPLACE_WITH_12_DIGIT_ACCOUNT_ID
 

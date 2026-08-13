@@ -16,7 +16,7 @@
 
 ## 実行順
 
-1. `AWS_REGION=us-east-1 ./scripts/preflight`を実行する。これは読み取り専用である。
+1. `AWS_REGION=ap-northeast-1 ./scripts/preflight`を実行する。これは読み取り専用である。
 2. managed base imageの実versionを`infra/cdk.json`またはCDK contextへ固定する。
 3. CDK stack全体ではなく、可能ならMicroVM image/network connectorだけの一時stackでP0 buildを確認する。
 4. EKS/ACKを作り、good fixtureを1回だけ実行する。

@@ -4,7 +4,7 @@ set -euo pipefail
 readonly REPOSITORY_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 readonly STACK_NAME="${STACK_NAME:-LambdaMicrovmPackageInspector}"
 readonly NAMESPACE="package-inspector-system"
-readonly AWS_REGION_VALUE="${AWS_REGION:-${AWS_DEFAULT_REGION:-us-east-1}}"
+readonly AWS_REGION_VALUE="${AWS_REGION:-${AWS_DEFAULT_REGION:-ap-northeast-1}}"
 
 "${REPOSITORY_ROOT}/scripts/assert-aws-account"
 

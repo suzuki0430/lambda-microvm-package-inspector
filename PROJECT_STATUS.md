@@ -31,7 +31,7 @@ AWS is external state and this file is not evidence of what is currently deploye
 
 ```bash
 export AWS_PROFILE=REPLACE_WITH_DEMO_PROFILE
-export AWS_REGION=us-east-1
+export AWS_REGION=ap-northeast-1
 export AWS_DEFAULT_REGION="$AWS_REGION"
 export EXPECTED_AWS_ACCOUNT_ID=REPLACE_WITH_12_DIGIT_ACCOUNT_ID
 

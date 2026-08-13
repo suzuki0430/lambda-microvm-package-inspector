@@ -10,12 +10,12 @@
 - EKS、NAT Gateway、EC2、S3、ECR、IAM、Lambda MicroVM、VPC connectorを作成できる権限
 - 変更操作の前に照合する、operator承認済みの12桁AWS account ID
 
-このrepositoryの既定regionは公式例に合わせて`us-east-1`です。別regionを使う場合は、preflightでmanaged MicroVM imageが返ることを必ず確認してください。
+このrepositoryの既定regionは`ap-northeast-1`です。Lambda MicroVMsと必要なCloudFormation resource typeが対象account・regionで利用できることを、デプロイ前にpreflightで必ず確認してください。
 
 ## 1. read-only preflight
 
 ```bash
-export AWS_REGION=us-east-1
+export AWS_REGION=ap-northeast-1
 export AWS_DEFAULT_REGION="$AWS_REGION"
 export AWS_PROFILE=REPLACE_WITH_DEMO_PROFILE
 export EXPECTED_AWS_ACCOUNT_ID=REPLACE_WITH_12_DIGIT_ACCOUNT_ID
@@ -33,7 +33,7 @@ pnpm cdk synth -c "microvmBaseImageVersion=$MICROVM_BASE_IMAGE_VERSION"
 ## 2. infrastructure
 
 ```bash
-AWS_REGION=us-east-1 \
+AWS_REGION=ap-northeast-1 \
 MICROVM_BASE_IMAGE_VERSION="$MICROVM_BASE_IMAGE_VERSION" \
 ./scripts/deploy-infrastructure
 ```
@@ -53,10 +53,12 @@ MicroVM execution roleとshell ingress connectorは作りません。
 
 `AWS::Lambda::MicrovmImage`のbuildでは、digest固定したNode base imageと`python3`/`strace`を取得するためAWS管理の`INTERNET_EGRESS` connectorを使います。検査実行時のACK `Microvm` CRには、このbuild用connectorではなくCDKが作成したdeny-egress connectorだけを設定します。
 
+`deploy-infrastructure`はCDK deploy前に`prepare-microvm-artifact`を実行します。この処理でgood/canaryの`.tgz`とcatalogを生成し、runnerと一緒にbuild artifactへコピーします。CDKがartifactをS3へuploadした後、MicroVM Image buildの`Dockerfile`がfixtureを`/opt/package-inspector/fixtures/`へ格納します。検査時のregistry downloadは行わないため、fixtureやrunnerを変更した場合は`deploy-infrastructure`を再実行してMicroVM Imageを更新してください。
+
 ## 3. controller
 
 ```bash
-AWS_REGION=us-east-1 \
+AWS_REGION=ap-northeast-1 \
 CONTROLLER_IMAGE_TAG="$(git rev-parse --short=12 HEAD)" \
 ./scripts/deploy-controller
 ```
@@ -84,7 +86,7 @@ kubectl -n package-inspector-system get packageinspections -o yaml
 
 ```bash
 kubectl -n package-inspector-system delete packageinspection canary-package
-AWS_REGION=us-east-1 ./scripts/verify-cleanup
+AWS_REGION=ap-northeast-1 ./scripts/verify-cleanup
 ```
 
 ACK/IAM障害でfinalizerが止まった場合、finalizerを手で外す前にAWS CLIで該当MicroVMをterminateしてください。先にfinalizerだけを削除すると課金resourceを孤児化します。
