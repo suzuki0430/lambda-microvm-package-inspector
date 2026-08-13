@@ -12,6 +12,17 @@ rules:
   - create
   - patch
 - apiGroups:
+  - coordination.k8s.io
+  resources:
+  - leases
+  verbs:
+  - create
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
   - inspection.demo.aws
   resources:
   - packageinspections
