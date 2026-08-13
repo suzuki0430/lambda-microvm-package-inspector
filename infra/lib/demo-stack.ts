@@ -25,6 +25,8 @@ export interface DemoStackProps extends StackProps {
   readonly microvmArtifactPath?: string;
   /** Pinned Lambda-managed AL2023 base image version discovered during preflight. */
   readonly microvmBaseImageVersion?: string;
+  /** IAM principal that may administer the demo cluster through EKS access entries. */
+  readonly eksAdminPrincipalArn?: string;
 }
 
 /**
@@ -200,6 +202,7 @@ export class DemoStack extends Stack {
 
     const cluster = new eks.Cluster(this, "Cluster", {
       version: eks.KubernetesVersion.V1_34,
+      authenticationMode: eks.AuthenticationMode.API_AND_CONFIG_MAP,
       kubectlLayer: new KubectlV34Layer(this, "KubectlLayer"),
       vpc,
       vpcSubnets: [{ subnetGroupName: "eks" }],
@@ -211,6 +214,14 @@ export class DemoStack extends Stack {
         eks.ClusterLoggingTypes.AUTHENTICATOR,
       ],
     });
+    if (props.eksAdminPrincipalArn) {
+      cluster.grantAccess("DemoAdministrator", props.eksAdminPrincipalArn, [
+        eks.AccessPolicy.fromAccessPolicyName(
+          eks.AccessPolicyArn.AMAZON_EKS_CLUSTER_ADMIN_POLICY.policyName,
+          { accessScopeType: eks.AccessScopeType.CLUSTER },
+        ),
+      ]);
+    }
     cluster.addNodegroupCapacity("SystemNodes", {
       amiType: eks.NodegroupAmiType.AL2023_ARM_64_STANDARD,
       instanceTypes: [new ec2.InstanceType("t4g.medium")],

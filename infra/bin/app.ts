@@ -12,4 +12,5 @@ new DemoStack(app, "LambdaMicrovmPackageInspector", {
     account: process.env.CDK_DEFAULT_ACCOUNT,
     region: process.env.CDK_DEFAULT_REGION ?? "us-east-1",
   },
+  eksAdminPrincipalArn: process.env.EKS_ADMIN_PRINCIPAL_ARN,
 });

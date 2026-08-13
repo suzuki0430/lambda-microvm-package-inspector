@@ -18,6 +18,8 @@ function template(): Template {
   const app = new App();
   const stack = new DemoStack(app, "TestStack", {
     env: { account: "123456789012", region: "us-east-1" },
+    eksAdminPrincipalArn:
+      "arn:aws:iam::123456789012:role/demo-cluster-administrator",
     microvmArtifactPath: fixturePath,
     microvmBaseImageVersion: "test-version",
   });
@@ -27,7 +29,28 @@ function template(): Template {
 describe("DemoStack", () => {
   it("uses an EKS version that remains in standard support", () => {
     template().hasResourceProperties("Custom::AWSCDK-EKS-Cluster", {
-      Config: Match.objectLike({ version: "1.34" }),
+      Config: Match.objectLike({
+        version: "1.34",
+        accessConfig: { authenticationMode: "API_AND_CONFIG_MAP" },
+      }),
+    });
+  });
+
+  it("grants the configured operator cluster-admin access through the EKS API", () => {
+    template().hasResourceProperties("AWS::EKS::AccessEntry", {
+      PrincipalArn: "arn:aws:iam::123456789012:role/demo-cluster-administrator",
+      AccessPolicies: [
+        {
+          AccessScope: { Type: "cluster" },
+          PolicyArn: {
+            "Fn::Join": Match.arrayWith([
+              Match.arrayWith([
+                ":eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy",
+              ]),
+            ]),
+          },
+        },
+      ],
     });
   });
 
