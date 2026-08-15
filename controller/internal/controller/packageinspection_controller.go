@@ -4,6 +4,7 @@
 // +kubebuilder:rbac:groups=inspection.demo.aws,resources=packageinspections/finalizers,verbs=update
 // +kubebuilder:rbac:groups=lambdamicrovms.services.k8s.aws,resources=microvms,verbs=get;list;watch;create;delete
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
+// +kubebuilder:rbac:groups=coordination.k8s.io,resources=leases,verbs=get;list;watch;create;update;patch
 package controller
 
 import (

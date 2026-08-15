@@ -18,6 +18,8 @@ function template(): Template {
   const app = new App();
   const stack = new DemoStack(app, "TestStack", {
     env: { account: "123456789012", region: "us-east-1" },
+    eksAdminPrincipalArn:
+      "arn:aws:iam::123456789012:role/demo-cluster-administrator",
     microvmArtifactPath: fixturePath,
     microvmBaseImageVersion: "test-version",
   });
@@ -27,7 +29,28 @@ function template(): Template {
 describe("DemoStack", () => {
   it("uses an EKS version that remains in standard support", () => {
     template().hasResourceProperties("Custom::AWSCDK-EKS-Cluster", {
-      Config: Match.objectLike({ version: "1.34" }),
+      Config: Match.objectLike({
+        version: "1.34",
+        accessConfig: { authenticationMode: "API_AND_CONFIG_MAP" },
+      }),
+    });
+  });
+
+  it("grants the configured operator cluster-admin access through the EKS API", () => {
+    template().hasResourceProperties("AWS::EKS::AccessEntry", {
+      PrincipalArn: "arn:aws:iam::123456789012:role/demo-cluster-administrator",
+      AccessPolicies: [
+        {
+          AccessScope: { Type: "cluster" },
+          PolicyArn: {
+            "Fn::Join": Match.arrayWith([
+              Match.arrayWith([
+                ":eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy",
+              ]),
+            ]),
+          },
+        },
+      ],
     });
   });
 
@@ -42,6 +65,52 @@ describe("DemoStack", () => {
         MinSize: 1,
       },
     });
+  });
+
+  it("creates the system namespace before namespaced control-plane resources", () => {
+    const resources = template().toJSON().Resources as Record<
+      string,
+      {
+        Type: string;
+        Properties?: { Manifest?: unknown };
+        DependsOn?: string[];
+      }
+    >;
+    const namespaceEntry = Object.entries(resources).find(
+      ([, resource]) =>
+        resource.Type === "Custom::AWSCDK-EKS-KubernetesResource" &&
+        String(resource.Properties?.Manifest).includes('"kind":"Namespace"'),
+    );
+
+    expect(namespaceEntry).toBeDefined();
+    const namespaceLogicalId = namespaceEntry?.[0];
+    const namespacedResources = Object.entries(resources)
+      .filter(
+        ([logicalId, resource]) =>
+          logicalId !== namespaceLogicalId &&
+          (resource.Type === "Custom::AWSCDK-EKS-HelmChart" ||
+            (resource.Type === "Custom::AWSCDK-EKS-KubernetesResource" &&
+              JSON.stringify(resource.Properties?.Manifest).includes(
+                "package-inspector-system",
+              ))),
+      )
+      .map(([, resource]) => resource);
+
+    expect(namespacedResources).toHaveLength(3);
+    for (const resource of namespacedResources) {
+      expect(resource.DependsOn).toContain(namespaceLogicalId);
+    }
+  });
+
+  it("uses the full OCI reference for the ACK Helm chart", () => {
+    const charts = template().findResources("Custom::AWSCDK-EKS-HelmChart");
+    const chart = Object.values(charts)[0];
+
+    expect(chart?.Properties).toMatchObject({
+      Chart: "oci://public.ecr.aws/aws-controllers-k8s/lambdamicrovms-chart",
+      Version: "0.1.1",
+    });
+    expect(chart?.Properties).not.toHaveProperty("Repository");
   });
 
   it("expires EKS control plane logs after one week", () => {
@@ -94,6 +163,16 @@ describe("DemoStack", () => {
     });
   });
 
+  it("grants the non-resource-scoped connector pass dependency to ACK", () => {
+    const policies = template().findResources("AWS::IAM::Policy");
+    const serialized = JSON.stringify(policies);
+
+    expect(serialized).toContain("lambda:PassNetworkConnector");
+    expect(serialized).toContain(
+      '"Action":"lambda:PassNetworkConnector","Effect":"Allow","Resource":"*"',
+    );
+  });
+
   it("allows network only while building the trusted MicroVM image", () => {
     const images = template().findResources("AWS::Lambda::MicrovmImage");
     const serialized = JSON.stringify(Object.values(images)[0]);
@@ -123,5 +202,16 @@ describe("DemoStack", () => {
     expect(
       Object.keys(roles).some((name) => name.includes("ExecutionRole")),
     ).toBe(false);
+  });
+
+  it("scopes runner auth-token creation to the inspector image", () => {
+    const policies = template().findResources("AWS::IAM::Policy");
+    const serialized = JSON.stringify(policies);
+
+    expect(serialized).toContain("lambda:CreateMicrovmAuthToken");
+    expect(serialized).toContain("InspectorImage");
+    expect(serialized).not.toContain(
+      '"Action":"lambda:CreateMicrovmAuthToken","Effect":"Allow","Resource":{"Fn::Join"',
+    );
   });
 });

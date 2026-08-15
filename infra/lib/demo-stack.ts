@@ -2,8 +2,6 @@ import * as path from "node:path";
 
 import { KubectlV34Layer } from "@aws-cdk/lambda-layer-kubectl-v34";
 import {
-  Arn,
-  ArnFormat,
   CfnOutput,
   Duration,
   RemovalPolicy,
@@ -25,6 +23,8 @@ export interface DemoStackProps extends StackProps {
   readonly microvmArtifactPath?: string;
   /** Pinned Lambda-managed AL2023 base image version discovered during preflight. */
   readonly microvmBaseImageVersion?: string;
+  /** IAM principal that may administer the demo cluster through EKS access entries. */
+  readonly eksAdminPrincipalArn?: string;
 }
 
 /**
@@ -200,6 +200,7 @@ export class DemoStack extends Stack {
 
     const cluster = new eks.Cluster(this, "Cluster", {
       version: eks.KubernetesVersion.V1_34,
+      authenticationMode: eks.AuthenticationMode.API_AND_CONFIG_MAP,
       kubectlLayer: new KubectlV34Layer(this, "KubectlLayer"),
       vpc,
       vpcSubnets: [{ subnetGroupName: "eks" }],
@@ -211,6 +212,14 @@ export class DemoStack extends Stack {
         eks.ClusterLoggingTypes.AUTHENTICATOR,
       ],
     });
+    if (props.eksAdminPrincipalArn) {
+      cluster.grantAccess("DemoAdministrator", props.eksAdminPrincipalArn, [
+        eks.AccessPolicy.fromAccessPolicyName(
+          eks.AccessPolicyArn.AMAZON_EKS_CLUSTER_ADMIN_POLICY.policyName,
+          { accessScopeType: eks.AccessScopeType.CLUSTER },
+        ),
+      ]);
+    }
     cluster.addNodegroupCapacity("SystemNodes", {
       amiType: eks.NodegroupAmiType.AL2023_ARM_64_STANDARD,
       instanceTypes: [new ec2.InstanceType("t4g.medium")],
@@ -228,10 +237,16 @@ export class DemoStack extends Stack {
     });
 
     const namespace = "package-inspector-system";
+    const systemNamespace = cluster.addManifest("PackageInspectorNamespace", {
+      apiVersion: "v1",
+      kind: "Namespace",
+      metadata: { name: namespace },
+    });
     const ackServiceAccount = cluster.addServiceAccount("AckServiceAccount", {
       name: "ack-lambdamicrovms-controller",
       namespace,
     });
+    ackServiceAccount.node.addDependency(systemNamespace);
     ackServiceAccount.addToPrincipalPolicy(
       new iam.PolicyStatement({
         actions: [
@@ -249,13 +264,21 @@ export class DemoStack extends Stack {
         resources: ["*"],
       }),
     );
+    ackServiceAccount.addToPrincipalPolicy(
+      new iam.PolicyStatement({
+        // PassNetworkConnector has no resource type or condition key in the
+        // Lambda service authorization table, so IAM requires Resource "*".
+        // The orchestrator fixes both connector ARNs in the generated CR.
+        actions: ["lambda:PassNetworkConnector"],
+        resources: ["*"],
+      }),
+    );
 
-    cluster.addHelmChart("LambdaMicrovmsAckController", {
-      chart: "lambdamicrovms-chart",
-      repository: "oci://public.ecr.aws/aws-controllers-k8s",
+    const ackController = cluster.addHelmChart("LambdaMicrovmsAckController", {
+      chart: "oci://public.ecr.aws/aws-controllers-k8s/lambdamicrovms-chart",
       version: "0.1.1",
       namespace,
-      createNamespace: true,
+      createNamespace: false,
       wait: true,
       values: {
         aws: { region: this.region },
@@ -271,6 +294,7 @@ export class DemoStack extends Stack {
         reconcile: { resources: ["Microvm"] },
       },
     });
+    ackController.node.addDependency(systemNamespace, ackServiceAccount);
 
     const controllerServiceAccount = cluster.addServiceAccount(
       "ControllerServiceAccount",
@@ -279,20 +303,11 @@ export class DemoStack extends Stack {
         namespace,
       },
     );
+    controllerServiceAccount.node.addDependency(systemNamespace);
     controllerServiceAccount.addToPrincipalPolicy(
       new iam.PolicyStatement({
         actions: ["lambda:CreateMicrovmAuthToken"],
-        resources: [
-          Arn.format(
-            {
-              service: "lambda",
-              resource: "microvm",
-              resourceName: "*",
-              arnFormat: ArnFormat.COLON_RESOURCE_NAME,
-            },
-            this,
-          ),
-        ],
+        resources: [microvmImage.attrImageArn],
       }),
     );
     reportBucket.grantPut(controllerServiceAccount);

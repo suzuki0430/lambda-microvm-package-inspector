@@ -35,11 +35,42 @@ docker buildx build \
   "${REPOSITORY_ROOT}/controller"
 
 kubectl apply -f "${REPOSITORY_ROOT}/deploy/crd"
+kubectl wait \
+  --for=condition=Established \
+  crd/packageinspections.inspection.demo.aws \
+  --timeout=60s
 kubectl apply -f "${REPOSITORY_ROOT}/deploy/rbac/role.yaml"
+if [[ "$(kubectl auth can-i get leases.coordination.k8s.io \
+  --as="system:serviceaccount:${NAMESPACE}:package-inspection-controller" \
+  --namespace="${NAMESPACE}")" != "yes" ]]; then
+  echo "Controller service account cannot use the leader-election Lease." >&2
+  exit 1
+fi
 kubectl -n "${NAMESPACE}" create configmap package-inspection-report-schema \
   --from-file=report.schema.json="${REPOSITORY_ROOT}/api/report-schema/report.schema.json" \
   --dry-run=client -o yaml | kubectl apply -f -
 kubectl apply -f "${REPOSITORY_ROOT}/deploy/controller.yaml"
+
+# ResourceQuota admission fails closed while the controller has not populated
+# usage for both custom resources. Do not report a successful deployment until
+# that safety boundary is ready to admit PackageInspection objects.
+quota_ready=false
+for _ in $(seq 1 30); do
+  package_usage="$(kubectl -n "${NAMESPACE}" get resourcequota package-inspection-demo-counts \
+    -o go-template='{{index .status.used "count/packageinspections.inspection.demo.aws"}}')"
+  microvm_usage="$(kubectl -n "${NAMESPACE}" get resourcequota package-inspection-demo-counts \
+    -o go-template='{{index .status.used "count/microvms.lambdamicrovms.services.k8s.aws"}}')"
+  if [[ -n "${package_usage}" && -n "${microvm_usage}" ]]; then
+    quota_ready=true
+    break
+  fi
+  sleep 2
+done
+if [[ "${quota_ready}" != "true" ]]; then
+  echo "ResourceQuota usage is not initialized for both custom resources." >&2
+  kubectl -n "${NAMESPACE}" get resourcequota package-inspection-demo-counts -o yaml >&2
+  exit 1
+fi
 kubectl -n "${NAMESPACE}" set image deployment/package-inspection-controller \
   controller="${REPOSITORY_URI}:${IMAGE_TAG}"
 kubectl -n "${NAMESPACE}" set env deployment/package-inspection-controller \

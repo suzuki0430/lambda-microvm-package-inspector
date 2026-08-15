@@ -8,6 +8,28 @@ readonly MICROVM_BASE_IMAGE_VERSION="${MICROVM_BASE_IMAGE_VERSION:?Set MICROVM_B
 "${REPOSITORY_ROOT}/scripts/preflight"
 "${REPOSITORY_ROOT}/scripts/prepare-microvm-artifact"
 
+# Resolve an assumed-role session back to its durable IAM role ARN so the
+# caller can use kubectl after CloudFormation creates the EKS cluster.
+if [[ -z "${EKS_ADMIN_PRINCIPAL_ARN:-}" ]]; then
+  caller_arn="$(aws sts get-caller-identity --query Arn --output text)"
+  case "${caller_arn}" in
+    arn:aws*:sts::*:assumed-role/*/*)
+      role_name="${caller_arn#*:assumed-role/}"
+      role_name="${role_name%%/*}"
+      EKS_ADMIN_PRINCIPAL_ARN="$(aws iam get-role --role-name "${role_name}" --query Role.Arn --output text)"
+      ;;
+    arn:aws*:iam::*:role/*|arn:aws*:iam::*:user/*)
+      EKS_ADMIN_PRINCIPAL_ARN="${caller_arn}"
+      ;;
+    *)
+      echo "Set EKS_ADMIN_PRINCIPAL_ARN for unsupported caller ${caller_arn}." >&2
+      exit 2
+      ;;
+  esac
+fi
+export EKS_ADMIN_PRINCIPAL_ARN
+echo "Granting EKS cluster-admin access to ${EKS_ADMIN_PRINCIPAL_ARN}."
+
 cd "${REPOSITORY_ROOT}/infra"
 pnpm install --frozen-lockfile
 pnpm cdk deploy LambdaMicrovmPackageInspector \
