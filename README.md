@@ -1,15 +1,15 @@
 # Lambda MicroVM Package Inspector
 
-Amazon EKSを実行基盤ではなくコントロールプレーンとして使い、ACKの`Microvm` Custom Resourceから検査ごとにAWS Lambda MicroVMを払い出す技術デモです。MVPは、イメージへ事前格納した2つの無害なnpmパッケージだけを対象にします。
+This technical demo uses Amazon EKS as a control plane rather than an execution environment. For each inspection, it provisions a fresh AWS Lambda MicroVM through an AWS Controllers for Kubernetes (ACK) `Microvm` custom resource. The MVP accepts only two harmless npm packages that are preloaded into the MicroVM image.
 
-久しぶりに作業を再開するときは、目的・期待結果・安全な再開手順をまとめた[PROJECT_STATUS.md](PROJECT_STATUS.md)から確認してください。
+If you are returning to the project after a break, start with [PROJECT_STATUS.md](PROJECT_STATUS.md). It summarizes the goal, expected results, and safe steps for resuming work.
 
-- `@demo/good@1.0.0`: lifecycle scriptを持たない比較用パッケージ
-- `@demo/canary@1.0.0`: `/tmp`書き込み、子プロセス、ダミー環境変数参照、`.test`ドメインのDNS/HTTP試行、存在しないAWS credentialsパス参照を行う無害なfixture
+- `@demo/good@1.0.0`: a comparison package with no lifecycle scripts
+- `@demo/canary@1.0.0`: a harmless fixture that writes to `/tmp`, starts a child process, reads a dummy environment variable, attempts DNS and HTTP access to a `.test` domain, and tries to open a nonexistent AWS credentials path
 
-これはマルウェア解析製品でも、安全性を証明するスキャナーでもありません。取得できた有限の証拠を、再現可能なデモ用ルールで説明するものです。
+This is neither a malware analysis product nor a scanner that proves a package is safe. It records a limited set of observations and explains them using deterministic rules written for this demo.
 
-## 何が実装されているか
+## What is implemented
 
 ```text
 trusted control plane (EKS)                             untrusted data plane
@@ -18,7 +18,7 @@ PackageInspection CR
         |
         | watch
         v
-自作Go controller ------ creates ------> ACK Microvm CR
+custom Go controller ---- creates ------> ACK Microvm CR
         |                                      |
         |                                      | watch
         |                                      v
@@ -41,47 +41,47 @@ PackageInspection CR
         +-- delete ACK Microvm CR -> ACK terminates MicroVM
 ```
 
-主な実装は次のディレクトリに分かれています。
+The main components are organized into the following directories:
 
-- `runner/`: Python製の静的・動的検査runnerとHTTP API
-- `controller/`: Go/controller-runtime製Orchestrator、risk engine、S3 store
-- `infra/`: AWS CDK TypeScript（EKS、S3、ECR、MicroVM Image、deny-egress VPC connector、IAM）
-- `packages/`: 良性fixtureとcanary fixture
-- `api/`: `PackageInspection` CRDの元になるGo APIとreport JSON Schema
-- `deploy/`: CRD、最小RBAC、controller Deployment、デモCR
+- `runner/`: Python static and dynamic inspection runner and its HTTP API
+- `controller/`: Go/controller-runtime orchestrator, risk engine, and S3 report store
+- `infra/`: AWS CDK in TypeScript for EKS, S3, ECR, the MicroVM image, the deny-egress VPC connector, and IAM
+- `packages/`: the benign comparison fixture and the canary fixture
+- `api/`: the Go API behind the `PackageInspection` CRD and the report JSON Schema
+- `deploy/`: the CRD, minimal RBAC, controller Deployment, and example custom resources
 
-詳細は[アーキテクチャ](docs/architecture.md)、[脅威モデル](docs/threat-model.md)、[制約](docs/limitations.md)を参照してください。
+See [Architecture](docs/architecture.md), [Threat model](docs/threat-model.md), and [Limitations](docs/limitations.md) for details.
 
-## AWSで検査を起動する仕組み
+## How an inspection starts on AWS
 
-検査の実行トリガーは、対象namespaceへの`PackageInspection` Custom Resource（CR）の作成です。現状はEventBridge、cron、SQS、npm公開イベントなどには接続していません。`./scripts/run-demo`は、次の2つの検査依頼を`kubectl apply`します。
+An inspection starts when a `PackageInspection` custom resource (CR) is created in the watched namespace. The current implementation is not connected to EventBridge, cron, SQS, npm publication events, or any other external trigger. `./scripts/run-demo` applies these two inspection requests with `kubectl`:
 
-- `deploy/examples/good.yaml`: `@demo/good@1.0.0`の検査依頼
-- `deploy/examples/canary.yaml`: `@demo/canary@1.0.0`の検査依頼
+- `deploy/examples/good.yaml`: inspects `@demo/good@1.0.0`
+- `deploy/examples/canary.yaml`: inspects `@demo/canary@1.0.0`
 
-どちらもパッケージ本体ではなく、ecosystem、パッケージ名、version、timeoutを指定する`PackageInspection` CRです。自作Go controllerがこのCRをwatchして検査全体を進めます。
+Neither file contains a package artifact. Each is a `PackageInspection` CR that specifies the ecosystem, package name, version, and timeout. The custom Go controller watches these resources and orchestrates the inspection workflow.
 
-controllerは2種類あり、責務が異なります。
+The two controllers have different responsibilities:
 
-- **自作Go controller**: `PackageInspection`を検証し、ACKの`Microvm` CRを作成します。MicroVMが`RUNNING`になるとrunnerへ`POST /v1/scans`を送り、完了確認、report取得・検証・S3保存、`Microvm` CR削除まで担当します。
-- **AWS ACK controller**: 自作Go controllerが作成した`Microvm` CRをwatchし、Lambda MicroVM APIを呼んで実際のMicroVMを起動・取得・停止します。
+- **Custom Go controller**: validates the `PackageInspection` and creates an ACK `Microvm` CR. After the MicroVM reaches `RUNNING`, it sends `POST /v1/scans` to the runner, waits for completion, retrieves and validates the report, stores it in S3, and deletes the `Microvm` CR.
+- **AWS ACK controller**: watches the `Microvm` CR created by the custom controller and calls the Lambda MicroVMs API to run, query, and terminate the actual MicroVM.
 
-したがって、ACKの`Microvm` CRを作るのは自作Go controllerで、AWS上のMicroVMを実際に操作するのはAWS ACK controllerです。
+In short, the custom Go controller creates the ACK `Microvm` CR, while the AWS ACK controller operates the MicroVM in AWS.
 
-## fixtureがMicroVMイメージへ入るタイミング
+## When fixtures are added to the MicroVM image
 
-good/canary fixtureは検査実行時にnpm registryから取得しません。`./scripts/deploy-infrastructure`がCDK deploy前に`scripts/prepare-microvm-artifact`を呼び、次の順でMicroVM Imageへ格納します。
+The good and canary fixtures are not downloaded from the npm registry during an inspection. Before deploying the CDK stack, `./scripts/deploy-infrastructure` invokes `scripts/prepare-microvm-artifact`, which packages them into the MicroVM image as follows:
 
-1. `scripts/build-fixtures`がgood/canaryの`.tgz`とcatalogを生成する
-2. runner、`fixtures/catalog.json`、fixtureの`.tgz`を`build/microvm-artifact`へコピーする
-3. CDKがbuild artifactをS3へuploadし、`AWS::Lambda::MicrovmImage`のbuildを開始する
-4. `microvm-image/Dockerfile`がfixtureを`/opt/package-inspector/fixtures/`へコピーする
+1. `scripts/build-fixtures` generates the good and canary `.tgz` files and their catalog.
+2. The runner, `fixtures/catalog.json`, and the fixture `.tgz` files are copied to `build/microvm-artifact`.
+3. CDK uploads the build artifact to S3 and starts the `AWS::Lambda::MicrovmImage` build.
+4. `microvm-image/Dockerfile` copies the fixtures to `/opt/package-inspector/fixtures/`.
 
-各`PackageInspection`は、このfixtureを既に含む同じMicroVM Imageから新しいMicroVMを起動します。fixtureやrunnerを変更した場合は、`deploy-infrastructure`を再実行してMicroVM Imageを更新する必要があります。
+Each `PackageInspection` launches a fresh MicroVM from the same image, which already contains the fixtures. If you change a fixture or the runner, run `deploy-infrastructure` again to update the MicroVM image.
 
-## ローカルで試す
+## Run locally
 
-必要なローカルツールはNode.js 20以上、pnpm 10.11、Python 3.11以上、uv、Go 1.25.12 toolchain、Dockerです。
+The local prerequisites are Node.js 20 or later, pnpm 10.11, Python 3.11 or later, uv, the Go 1.25.12 toolchain, and Docker.
 
 ```bash
 make fixtures
@@ -91,17 +91,17 @@ make runner-scan-good
 make runner-scan-canary
 ```
 
-Linux/arm64コンテナで`strace`を含む実経路を確認する場合は次を実行します。
+To exercise the full `strace` path in a Linux/arm64 container, run:
 
 ```bash
 make runner-integration
 ```
 
-macOS上のrunner単体テストでは`strace`が使えません。DockerまたはLambda MicroVMでのみsyscall由来のprocess/file/network証拠が追加されます。
+The runner cannot use `strace` in macOS unit tests. Syscall-derived process, file, and network evidence is available only in Docker or a Lambda MicroVM.
 
-## AWSへデプロイする
+## Deploy to AWS
 
-AWS操作の前に[デプロイ手順](docs/deployment.md)、[AWS技術スパイク](docs/aws-spikes.md)、[脅威モデル](docs/threat-model.md)を読んでください。専用の非本番アカウントを前提とします。このrepositoryの既定regionと以下の例は`ap-northeast-1`です。
+Before performing any AWS operation, read the [deployment guide](docs/deployment.md), [AWS technical spikes](docs/aws-spikes.md), and [threat model](docs/threat-model.md). Use a dedicated non-production account. The repository default and the example below use `ap-northeast-1`.
 
 ```bash
 export AWS_PROFILE=REPLACE_WITH_DEMO_PROFILE
@@ -117,11 +117,11 @@ AWS_REGION="$AWS_REGION" ./scripts/deploy-controller
 ./scripts/run-demo
 ```
 
-`PackageInspection`のstatusには、生ログではなくphase、risk summary、S3 URI、SHA-256だけを保存します。JWEはKubernetesへ永続化せず、必要なリクエストごとに5分・port 8080限定で生成します。
+The `PackageInspection` status stores only the phase, risk summary, S3 URIs, and SHA-256 digest, not raw evidence. JWE tokens are never persisted in Kubernetes. The controller creates a fresh token for each request, restricted to port 8080 and valid for five minutes.
 
-## 必ず後片付けする
+## Always clean up
 
-`PackageInspection` finalizerは、対応するACK `Microvm` CRが消えるまでユーザーCRの削除を完了させません。さらにAWS側の残存VMを確認してからCDK stackを削除します。
+The `PackageInspection` finalizer prevents deletion of the user-facing CR from completing until the corresponding ACK `Microvm` CR is gone. The cleanup script also checks for residual MicroVMs in AWS before deleting the CDK stack.
 
 ```bash
 CONFIRM_DESTROY=LambdaMicrovmPackageInspector \
@@ -129,21 +129,21 @@ AWS_REGION="$AWS_REGION" \
 ./scripts/destroy-demo
 ```
 
-スタックにはNAT Gateway、EKS control plane、EC2 managed node、Lambda MicroVM Imageなど費用が発生するリソースが含まれます。記事撮影後は当日中の削除を推奨します。
+The stack contains billable resources, including a NAT Gateway, an EKS control plane, an EC2 managed node, and a Lambda MicroVM image. Delete it on the same day after completing the demo or taking screenshots.
 
-## 安全側の制約
+## Safety boundaries
 
-- CRD admissionとrunner catalogの両方で、2つのfixture・version `1.0.0`以外を拒否
-- MicroVM execution roleなし、AWS credentialなし、shell ingress connectorなし
-- runtime egressはisolated subnet + outbound ruleなしSecurity GroupのVPC connectorへ固定
-- package codeはUID/GID 10001、rlimit、wall-clock、stdout/stderr、ファイルサイズ制限付き
-- package tarballはsizeとSHA-256を実行前に検証
-- 1 MicroVMにつき1 scan IDだけを受理し、Kubernetes UIDで冪等化
-- reportを2 MiBで打ち切り、JSON Schema検証後にだけS3へ保存
-- controllerは対象namespaceだけをwatchし、redirectと想定外endpoint originを拒否
+- CRD validation and the runner catalog reject anything except the two fixtures at version `1.0.0`.
+- The MicroVM has no execution role, AWS credentials, or shell ingress connector.
+- Runtime egress is fixed to a VPC connector that uses isolated subnets and a security group with no outbound rules.
+- Package code runs as UID/GID 10001 with resource limits for process CPU time, process count, wall-clock time, stdout, stderr, and file size.
+- The package tarball size and SHA-256 digest are verified before execution.
+- Each MicroVM accepts only one scan ID, with idempotency keyed by the Kubernetes UID.
+- Reports are capped at 2 MiB and stored in S3 only after JSON Schema validation.
+- The controller watches only the target namespace and rejects redirects and unexpected endpoint origins.
 
-fixture以外を追加する前にDNS Firewallまたは管理下DNS sinkを導入してください。AmazonProvidedDNSはSecurity Groupだけでは完全に遮断できないため、このMVPを任意の第三者パッケージへ拡張してはいけません。
+Before adding any package beyond the fixtures, introduce DNS Firewall or a controlled DNS sink. A security group alone cannot completely block AmazonProvidedDNS, so do not extend this MVP to arbitrary third-party packages in its current form.
 
-## ライセンス
+## License
 
 [MIT License](LICENSE)
